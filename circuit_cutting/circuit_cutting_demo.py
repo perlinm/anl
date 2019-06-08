@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 
-import numpy as np
 import networkx as nx
 import copy
 import qiskit
-
-np.set_printoptions(linewidth = 200)
 
 ##########################################################################################
 # this script demonstrates "automatic" qiskit circuit cutting
