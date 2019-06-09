@@ -158,8 +158,8 @@ def cut_circuit(circuit, *cuts):
     for wire_0, wire_1 in stitches:
         index_0, index_1 = None, None
         for subgraph_index, wires in enumerate(subgraph_wires):
-            if wire_0 in wires: index_0 = subgraph_index
-            if wire_1 in wires: index_1 = subgraph_index
+            if not index_0 and wire_0 in wires: index_0 = subgraph_index
+            if not index_1 and wire_1 in wires: index_1 = subgraph_index
             if index_0 and index_1: break
         subgraph_stitches.add( ( ( index_0, wire_0 ), ( index_1, wire_1 ) ) )
 
