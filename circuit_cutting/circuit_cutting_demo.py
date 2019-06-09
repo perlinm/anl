@@ -5,8 +5,8 @@ import copy
 import qiskit
 
 ##########################################################################################
-# this script demonstrates "automatic" qiskit circuit cutting
-# using the cutting method described in arxiv.org/abs/1904.00102
+# this script demonstrates "automatic" cutting of a quantum circuit in qiskit
+# cutting is performed using method described in arxiv.org/abs/1904.00102
 # developed using qiskit version 0.8.1
 ##########################################################################################
 
@@ -44,7 +44,7 @@ def disjoint_subgraphs(graph, zip_output = True):
     if zip_output: return zip(subgraphs, subgraph_wires)
     else: return subgraphs, subgraph_wires
 
-# accepts a circuit and a set of cuts (qubit, op_number), where op_number is
+# accepts a circuit and cuts (qubit, op_number), where op_number is
 #   the number of operations performed on the qubit before the cut
 # returns (i) a list of subcircuits, and
 # (ii) a list of "stitches" in the format ( ( <index of subcircuit>, <output wire> ),
@@ -120,7 +120,7 @@ def cut_circuit(circuit, *cuts):
                     # fix downstream references to the cut cubit (in all edges)
                     if edge[1] in op_descendants and edge[2]["wire"] == cut_qubit:
                         graph._multi_graph.remove_edge(*edge[:2])
-                        graph._multi_graph.add_edge(edge[0], edge[1],
+                        graph._multi_graph.add_edge(*edge[:2],
                                                     name = f"{new_qubit[0].name}[{new_qubit[1]}]",
                                                     wire = new_qubit)
 
