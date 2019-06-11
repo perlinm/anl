@@ -68,9 +68,9 @@ def trimmed_graph(graph, graph_wires = None):
     # construct map from old bits to new ones
     # qiskit refuses to construct empty registers, so we have to cover a few possible cases...
     old_qubits = [ wire for wire in graph_wires
-                   if type(wire[0]) == qs.circuit.quantumregister.QuantumRegister ]
+                   if type(wire[0]) is qs.circuit.quantumregister.QuantumRegister ]
     old_clbits = [ wire for wire in graph_wires
-                   if type(wire[0]) == qs.circuit.classicalregister.ClassicalRegister ]
+                   if type(wire[0]) is qs.circuit.classicalregister.ClassicalRegister ]
     if len(old_qubits) > 0 and len(old_clbits) > 0:
         new_qubits = qs.QuantumRegister(len(old_qubits),"q")
         new_clbits = qs.ClassicalRegister(len(old_clbits),"c")
@@ -108,103 +108,87 @@ def trimmed_graph(graph, graph_wires = None):
 def cut_circuit(circuit, *cuts):
     if len(cuts) == 0: return circuit.copy()
 
+    # assert that all cut wires are part of a quantum register
+    assert(all( type(wire[0]) is qs.circuit.quantumregister.QuantumRegister
+                for wire, _ in cuts ))
+
     # initialize new qubit register and construct total circuit graph
-    new_quantum_register = qs.QuantumRegister(len(cuts),random_string())
-    new_qubits = iter(new_quantum_register)
+    new_register = qs.QuantumRegister(len(cuts),random_string())
+    new_wires = iter(new_register)
     graph = qs.converters.circuit_to_dag(circuit.copy())
-    graph.add_qreg(new_quantum_register)
+    graph.add_qreg(new_register)
 
     # TODO: deal with barriers properly
     # barriers currently interfere with splitting a graph into subgraphs
     graph.remove_all_ops_named("barrier")
 
-    # collect a dictionary summarizing cuts with { < qubit > : < set of cuts > }
-    qubit_cuts = {}
-    for qubit, op_number in cuts:
-        if qubit_cuts.get(qubit) is None:
-            qubit_cuts[qubit] = { op_number }
-        else:
-            qubit_cuts[qubit].add(op_number)
-
-    # convert the sets of cuts in qubit_cuts to ordered lists
-    for qubit in qubit_cuts.keys():
-        qubit_cuts[qubit] = sorted(list(qubit_cuts[qubit]), reverse = True)
-
-    # keep track of how many operations have been performed on each qubit
-    qubit_op_count = { qubit : 0 for qubit in qubit_cuts.keys() }
-
-    # tuples identifying which old/new qubits to stitch together
+    # tuples identifying which old/new wires to stitch together
     stitches = set()
 
-    # loop over all gates in this cirtuit, looking for places to cut
-    for op_node in graph._multi_graph.nodes():
-        if op_node.type != "op": continue
+    # loop over all cuts from last to first
+    for cut_wire, cut_location in sorted(cuts, key = lambda cut : -cut[1]):
 
-        # for each qubit that we have yet to cut...
-        for cut_qubit, cut_pos in list(qubit_cuts.items()):
+        # identify terminal node of the wire we're cutting
+        cut_wire_out = terminal_node(graph, cut_wire, "out")
 
-            # identify input/output nodes for this qubit
-            cut_qubit_in = terminal_node(graph, cut_qubit, "in")
-            cut_qubit_out = terminal_node(graph, cut_qubit, "out")
+        # identify the node before which to cut
+        wire_nodes = [ node for node in graph.topological_op_nodes()
+                       if cut_wire in node.qargs ]
+        cut_node = wire_nodes[cut_location]
 
-            # if we have reached an operation count that matches a cut we need to make...
-            if qubit_op_count[cut_qubit] == cut_pos[-1]:
+        # identify all nodes downstream of this one
+        cut_descendants = nx.descendants(graph._multi_graph, cut_node)
 
-                # identify the new qubit we will insert
-                new_qubit = next(new_qubits)
-                new_qubit_in = terminal_node(graph, new_qubit, "in")
-                new_qubit_out = terminal_node(graph, new_qubit, "out")
-                graph._multi_graph.remove_edge(new_qubit_in, new_qubit_out)
+        # identify the new wire to use
+        new_wire = next(new_wires)
+        new_wire_in = terminal_node(graph, new_wire, "in")
+        new_wire_out = terminal_node(graph, new_wire, "out")
+        graph._multi_graph.remove_edge(new_wire_in, new_wire_out)
 
-                # replace the cut qubit in this node by a new qubit
-                op_node.qargs[op_node.qargs.index(cut_qubit)] = new_qubit
+        # replace all edges on this wire as appropriate
+        for edge in [ edge[:2] for edge in graph._multi_graph.edges(data = True)
+                      if edge[2]["wire"] == cut_wire ]:
 
-                # identify all nodes downstream of this one
-                op_descendants = nx.descendants(graph._multi_graph, op_node)
+            # if this edge ends at the node at which we're cutting, splice in the new wire
+            if cut_wire in edge[0].qargs and edge[1] == cut_node:
+                graph._multi_graph.remove_edge(*edge[:2])
+                graph._multi_graph.add_edge(edge[0], cut_wire_out,
+                                            name = f"{cut_wire[0].name}[{cut_wire[1]}]",
+                                            wire = cut_wire)
+                graph._multi_graph.add_edge(new_wire_in, edge[1],
+                                            name = f"{new_wire[0].name}[{new_wire[1]}]",
+                                            wire = new_wire)
+                continue # we are definitely done with this edge
 
-                for edge in list(graph._multi_graph.edges(data = True)):
-                    # remove and replace incoming edges from a node with the cut cubit
-                    if cut_qubit in edge[0].qargs and edge[1] == op_node:
-                        graph._multi_graph.remove_edge(*edge[:2])
-                        graph._multi_graph.add_edge(edge[0], cut_qubit_out,
-                                                    name = f"{cut_qubit[0].name}[{cut_qubit[1]}]",
-                                                    wire = cut_qubit)
-                        graph._multi_graph.add_edge(new_qubit_in, edge[1],
-                                                    name = f"{new_qubit[0].name}[{new_qubit[1]}]",
-                                                    wire = new_qubit)
+            # fix downstream references to the cut wire (in all edges)
+            if edge[1] in cut_descendants:
+                graph._multi_graph.remove_edge(*edge[:2])
+                graph._multi_graph.add_edge(*edge[:2],
+                                            name = f"{new_wire[0].name}[{new_wire[1]}]",
+                                            wire = new_wire)
 
-                    # fix downstream references to the cut cubit (in all edges)
-                    if edge[1] in op_descendants and edge[2]["wire"] == cut_qubit:
-                        graph._multi_graph.remove_edge(*edge[:2])
-                        graph._multi_graph.add_edge(*edge[:2],
-                                                    name = f"{new_qubit[0].name}[{new_qubit[1]}]",
-                                                    wire = new_qubit)
+            # replace downstream terminal node of the cut wire by that of the new wire
+            if edge[1] == cut_wire_out:
+                graph._multi_graph.remove_edge(*edge[:2])
+                graph._multi_graph.add_edge(edge[0], new_wire_out,
+                                            name = f"{new_wire[0].name}[{new_wire[1]}]",
+                                            wire = new_wire)
 
-                    # replace terminal node of the cut qubit by that of the new qubit
-                    if edge[1] == cut_qubit_out:
-                        graph._multi_graph.remove_edge(*edge[:2])
-                        graph._multi_graph.add_edge(edge[0], new_qubit_out,
-                                                    name = f"{new_qubit[0].name}[{new_qubit[1]}]",
-                                                    wire = new_qubit)
+        ### end loop over edges
 
-                # fix downstream references to the cut cubit (in all nodes)
-                for node in op_descendants:
-                    if node.type == "op" and cut_qubit in node.qargs:
-                        node.qargs[node.qargs.index(cut_qubit)] = new_qubit
+        # fix downstream references to the cut wire (in all nodes)
+        for node in [ cut_node ] + list(cut_descendants):
+            if node.type == "op" and cut_wire in node.qargs:
+                node.qargs[node.qargs.index(cut_wire)] = new_wire
 
-                # identify the old/new qubit for stitching together
-                stitches.add((cut_qubit, new_qubit))
+        # fix references to the cut wire in the set of stitches
+        stitches = { ( start if start != cut_wire else new_wire, end )
+                     for start, end in stitches }
 
-                # remove this cut from our list of cuts
-                cut_pos.pop()
+        # identify the old/new wires to stitch together
+        stitches.add((cut_wire, new_wire))
 
-            # remove this qubit if we do not need to cut it anymore
-            if len(cut_pos) == 0: del qubit_cuts[cut_qubit]
-
-        # update operation count for each qubit
-        for node_qubit in op_node.qargs:
-            try: qubit_op_count[node_qubit] += 1
-            except: None
+    ### end loop over cuts
 
     # split the total circuit graph into subgraphs
     subgraphs, subgraph_wires = disjoint_subgraphs(graph, zip_output = False)
@@ -254,10 +238,10 @@ circ.barrier()
 for qubit in qubits:
     circ.iden(qubit)
 
-subcircs, subcirc_stitches, subcirc_wiring = cut_circuit(circ, (qubits[0],1), (qubits[2],1))
-
 print("original circuit:")
 print(circ)
+
+subcircs, subcirc_stitches, subcirc_wiring = cut_circuit(circ, (qubits[0],1), (qubits[2],1))
 
 print()
 print("subcircuits:")
