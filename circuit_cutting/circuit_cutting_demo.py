@@ -44,6 +44,55 @@ def disjoint_subgraphs(graph, zip_output = True):
     if zip_output: return zip(subgraphs, subgraph_wires)
     else: return subgraphs, subgraph_wires
 
+# "trim" a circuit graph (i.e. in DAG form) by eliminating unused bits
+# optionally accept a set of all used wires (with a promise that the set is correct)
+# return trimmed graph, as well as a dictionary mapping old wires to new ones
+def trimmed_graph(graph, graph_wires = None):
+    # if we were not told which wires are used, figure it out
+    if graph_wires is None:
+        graph_wires = set()
+
+        # identify all subgraphs
+        nx_subgraphs = nx.connected_component_subgraphs(graph.to_networkx().to_undirected())
+        for nx_subgraph in nx_subgraphs:
+            # if there is only one edge in this subgraph, ignore it; it is an empty wire
+            if len(nx_subgraph.edges()) == 1: continue
+
+            # otherwise, add all wires from input nodes
+            graph_wires.update({ node.wire for node in nx_subgraph if node.type == "in" })
+
+    # construct map from old bits to new ones
+    # qiskit refuses to construct empty registers, so we have to cover a few possible cases...
+    old_qubits = [ wire for wire in graph_wires
+                   if type(wire[0]) == qiskit.circuit.quantumregister.QuantumRegister ]
+    old_clbits = [ wire for wire in graph_wires
+                   if type(wire[0]) == qiskit.circuit.classicalregister.ClassicalRegister ]
+    if len(old_qubits) > 0 and len(old_clbits) > 0:
+        new_qubits = qiskit.QuantumRegister(len(old_qubits),"q")
+        new_clbits = qiskit.ClassicalRegister(len(old_clbits),"c")
+        trimmed_circuit = qiskit.QuantumCircuit(new_qubits, new_clbits)
+    elif len(old_qubits) > 0 and len(old_clbits) == 0:
+        new_qubits = qiskit.QuantumRegister(len(old_qubits),"q")
+        new_clbits = []
+        trimmed_circuit = qiskit.QuantumCircuit(new_qubits)
+    elif len(old_qubits) == 0 and len(old_clbits) > 0:
+        new_qubits = []
+        new_clbits = qiskit.ClassicalRegister(len(old_clbits),"c")
+        trimmed_circuit = qiskit.QuantumCircuit(new_clbits)
+    else:
+        trimmed_circuit = qiskit.QuantumCircuit()
+
+    register_map = list(zip(old_qubits, new_qubits)) + list(zip(old_clbits, new_clbits))
+    register_map = { old_bit : new_bit for old_bit, new_bit in register_map }
+
+    # add all operations to the trimmed circuit
+    for node in graph.topological_op_nodes():
+        new_qargs = [ register_map[qubit] for qubit in node.qargs ]
+        new_cargs = [ register_map[clbit] for clbit in node.cargs ]
+        trimmed_circuit.append(node.op, qargs = new_qargs, cargs = new_cargs)
+
+    return qiskit.converters.circuit_to_dag(trimmed_circuit), register_map
+
 # accepts a circuit and cuts (qubit, op_number), where op_number is
 #   the number of operations performed on the qubit before the cut
 # returns (i) a list of subcircuits, and
@@ -153,6 +202,11 @@ def cut_circuit(circuit, *cuts):
     # split the total circuit graph into subgraphs
     subgraphs, subgraph_wires = disjoint_subgraphs(graph, zip_output = False)
 
+    # trim subgraphs, eliminating unused bits
+    trimmed_subgraphs, wire_maps \
+        = zip(*[ trimmed_graph(subgraph, wires)
+                 for subgraph, wires in zip(subgraphs, subgraph_wires) ])
+
     # identify the subgraphs addressing the wires in each stitch
     subgraph_stitches = set()
     for wire_0, wire_1 in stitches:
@@ -161,10 +215,13 @@ def cut_circuit(circuit, *cuts):
             if not index_0 and wire_0 in wires: index_0 = subgraph_index
             if not index_1 and wire_1 in wires: index_1 = subgraph_index
             if index_0 and index_1: break
+        wire_0 = wire_maps[index_0][wire_0]
+        wire_1 = wire_maps[index_1][wire_1]
         subgraph_stitches.add( ( ( index_0, wire_0 ), ( index_1, wire_1 ) ) )
 
     # convert the subgraphs into QuantumCircuit objects
-    subcircuits = [ qiskit.converters.dag_to_circuit(graph) for graph in subgraphs ]
+    subcircuits = [ qiskit.converters.dag_to_circuit(graph)
+                    for graph in trimmed_subgraphs ]
     return subcircuits, subgraph_stitches
 
 ##########################################################################################
