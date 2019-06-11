@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 
 import networkx as nx
-import copy
-import qiskit
+import qiskit as qs
+import copy, random
 
 ##########################################################################################
 # this script demonstrates "automatic" cutting of a quantum circuit in qiskit
 # cutting is performed using method described in arxiv.org/abs/1904.00102
 # developed using qiskit version 0.8.1
 ##########################################################################################
+
+# return a random character string of length k
+def random_string(k = 100):
+    return "".join(random.choices("abcdefghijklmnopqrstuvwxyz", k = k))
 
 # get the terminal node of a qubit in a graph
 def terminal_node(graph, qubit, termination_type):
@@ -31,7 +35,7 @@ def disjoint_subgraphs(graph, zip_output = True):
         # make a copy of the full graph, and remove nodes not in this subgraph
         subgraph = copy.deepcopy(graph)
         for node in subgraph.op_nodes():
-            if not any( qiskit.dagcircuit.DAGNode.semantic_eq(node, nx_node)
+            if not any( qs.dagcircuit.DAGNode.semantic_eq(node, nx_node)
                         for nx_node in nx_subgraph.nodes() ):
                 subgraph.remove_op_node(node)
 
@@ -64,23 +68,23 @@ def trimmed_graph(graph, graph_wires = None):
     # construct map from old bits to new ones
     # qiskit refuses to construct empty registers, so we have to cover a few possible cases...
     old_qubits = [ wire for wire in graph_wires
-                   if type(wire[0]) == qiskit.circuit.quantumregister.QuantumRegister ]
+                   if type(wire[0]) == qs.circuit.quantumregister.QuantumRegister ]
     old_clbits = [ wire for wire in graph_wires
-                   if type(wire[0]) == qiskit.circuit.classicalregister.ClassicalRegister ]
+                   if type(wire[0]) == qs.circuit.classicalregister.ClassicalRegister ]
     if len(old_qubits) > 0 and len(old_clbits) > 0:
-        new_qubits = qiskit.QuantumRegister(len(old_qubits),"q")
-        new_clbits = qiskit.ClassicalRegister(len(old_clbits),"c")
-        trimmed_circuit = qiskit.QuantumCircuit(new_qubits, new_clbits)
+        new_qubits = qs.QuantumRegister(len(old_qubits),"q")
+        new_clbits = qs.ClassicalRegister(len(old_clbits),"c")
+        trimmed_circuit = qs.QuantumCircuit(new_qubits, new_clbits)
     elif len(old_qubits) > 0 and len(old_clbits) == 0:
-        new_qubits = qiskit.QuantumRegister(len(old_qubits),"q")
+        new_qubits = qs.QuantumRegister(len(old_qubits),"q")
         new_clbits = []
-        trimmed_circuit = qiskit.QuantumCircuit(new_qubits)
+        trimmed_circuit = qs.QuantumCircuit(new_qubits)
     elif len(old_qubits) == 0 and len(old_clbits) > 0:
         new_qubits = []
-        new_clbits = qiskit.ClassicalRegister(len(old_clbits),"c")
-        trimmed_circuit = qiskit.QuantumCircuit(new_clbits)
+        new_clbits = qs.ClassicalRegister(len(old_clbits),"c")
+        trimmed_circuit = qs.QuantumCircuit(new_clbits)
     else:
-        trimmed_circuit = qiskit.QuantumCircuit()
+        trimmed_circuit = qs.QuantumCircuit()
 
     register_map = list(zip(old_qubits, new_qubits)) + list(zip(old_clbits, new_clbits))
     register_map = { old_bit : new_bit for old_bit, new_bit in register_map }
@@ -91,20 +95,23 @@ def trimmed_graph(graph, graph_wires = None):
         new_cargs = [ register_map[clbit] for clbit in node.cargs ]
         trimmed_circuit.append(node.op, qargs = new_qargs, cargs = new_cargs)
 
-    return qiskit.converters.circuit_to_dag(trimmed_circuit), register_map
+    return qs.converters.circuit_to_dag(trimmed_circuit), register_map
 
 # accepts a circuit and cuts (qubit, op_number), where op_number is
-#   the number of operations performed on the qubit before the cut
-# returns (i) a list of subcircuits, and
-# (ii) a list of "stitches" in the format ( ( <index of subcircuit>, <output wire> ),
-#                                           ( <index of subcircuit>, <input wire> ) )
+#   the number of operations performed on the qubit before the cut; returns:
+# (i) a list of subcircuits,
+# (ii) a list of "stitches" in the format ( ( <index of output subcircuit>, <output wire> ),
+#                                           ( <index of input subcircuit>,  <input wire> ) ),
+# (iii) a dictionary taking input wires of the original circuit to input wires of subcircuits:
+#       { <input wire in the original circuit> :
+#         ( <index of subcircuit>, <corresponding input wire in subcircuit> ) }
 def cut_circuit(circuit, *cuts):
     if len(cuts) == 0: return circuit.copy()
 
     # initialize new qubit register and construct total circuit graph
-    new_quantum_register = qiskit.QuantumRegister(len(cuts),"n")
+    new_quantum_register = qs.QuantumRegister(len(cuts),random_string())
     new_qubits = iter(new_quantum_register)
-    graph = qiskit.converters.circuit_to_dag(circuit.copy())
+    graph = qs.converters.circuit_to_dag(circuit.copy())
     graph.add_qreg(new_quantum_register)
 
     # TODO: deal with barriers properly
@@ -219,16 +226,23 @@ def cut_circuit(circuit, *cuts):
         wire_1 = wire_maps[index_1][wire_1]
         subgraph_stitches.add( ( ( index_0, wire_0 ), ( index_1, wire_1 ) ) )
 
+    # map each input wire in the original circuit to an input wire in subcircuits
+    subcircuit_wiring = {}
+    for subcircuit_index, wire_map in enumerate(wire_maps):
+        for in_wire, out_wire in wire_map.items():
+            if in_wire in circuit.qubits or in_wire in circuit.clbits:
+                subcircuit_wiring[in_wire] = (subcircuit_index, out_wire)
+
     # convert the subgraphs into QuantumCircuit objects
-    subcircuits = [ qiskit.converters.dag_to_circuit(graph)
+    subcircuits = [ qs.converters.dag_to_circuit(graph)
                     for graph in trimmed_subgraphs ]
-    return subcircuits, subgraph_stitches
+    return subcircuits, subgraph_stitches, subcircuit_wiring
 
 ##########################################################################################
 
 # construct a circuit that makes two bell pairs
-qubits = qiskit.QuantumRegister(4, "q")
-circ = qiskit.QuantumCircuit(qubits)
+qubits = qs.QuantumRegister(4, "q")
+circ = qs.QuantumCircuit(qubits)
 circ.h(qubits[0])
 circ.cx(qubits[0], qubits[1])
 circ.barrier()
@@ -240,15 +254,22 @@ circ.barrier()
 for qubit in qubits:
     circ.iden(qubit)
 
-subcircs, subcirc_stitches = cut_circuit(circ, (qubits[0],1), (qubits[2],1))
+subcircs, subcirc_stitches, subcirc_wiring = cut_circuit(circ, (qubits[0],1), (qubits[2],1))
 
 print("original circuit:")
 print(circ)
 
+print()
 print("subcircuits:")
 for subcirc in subcircs:
     print(subcirc)
 
-print("stitches:")
+print()
+print("subcircuit stitches:")
 for stitch in subcirc_stitches:
-    print(stitch)
+    print(*stitch[0], "-->", *stitch[1])
+
+print()
+print("subcircuit wiring:")
+for old_wire, new_wire in subcirc_wiring.items():
+    print(old_wire, "-->", *new_wire)
