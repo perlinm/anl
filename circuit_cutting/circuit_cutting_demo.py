@@ -244,9 +244,10 @@ print(circ)
 subcircs, subcirc_stitches, subcirc_wiring = cut_circuit(circ, (qubits[0],1), (qubits[2],1))
 
 print()
-print("subcircuits:")
-for subcirc in subcircs:
+for jj, subcirc in enumerate(subcircs):
+    print("subcircuit index:",jj)
     print(subcirc)
+    print("--------------------")
 
 print()
 print("subcircuit stitches:")
