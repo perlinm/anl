@@ -97,14 +97,16 @@ def trimmed_graph(graph, graph_wires = None):
 
     return qs.converters.circuit_to_dag(trimmed_circuit), register_map
 
-# accepts a circuit and cuts (qubit, op_number), where op_number is
-#   the number of operations performed on the qubit before the cut; returns:
+# accepts a circuit and cuts (wire, op_number), where op_number is
+#   the number of operations performed on the wire before the cut; returns:
 # (i) a list of subcircuits
-# (ii) a dictionary taking input wires of the original circuit to input wires of subcircuits:
-#      { <input wire in the original circuit> :
-#        ( <index of subcircuit>, <corresponding input wire in subcircuit> ) }
-# (iii) a list of "stitches" in the format ( ( <index of output subcircuit>, <output wire> ),
-#                                            ( <index of input subcircuit>,  <input wire> ) )
+# (ii) a dictionary that identifies inputs to the original circuits with inputs of subcircuits:
+#      { <wire in the original circuit> :
+#        ( <index of subcircuit>, <wire in subcircuit> ) }
+# (iii) a dictionary identifying how subcircuits should be stitched together;
+#       this dictionary takes output wires of subcircuits to input wires of subcircuits:
+#      { ( <index of subcircuit>, <wire in subcircuit> ) :
+#        ( <index of subcircuit>, <wire in subcircuit> ) }
 def cut_circuit(circuit, *cuts):
     if len(cuts) == 0: return circuit.copy()
 
@@ -206,7 +208,7 @@ def cut_circuit(circuit, *cuts):
                 subcircuit_wiring[in_wire] = (subcircuit_index, out_wire)
 
     # identify the subgraphs addressing the wires in each stitch
-    subgraph_stitches = set()
+    subgraph_stitches = {}
     for wire_0, wire_1 in stitches:
         index_0, index_1 = None, None
         for subgraph_index, wires in enumerate(subgraph_wires):
@@ -215,7 +217,7 @@ def cut_circuit(circuit, *cuts):
             if index_0 and index_1: break
         wire_0 = wire_maps[index_0][wire_0]
         wire_1 = wire_maps[index_1][wire_1]
-        subgraph_stitches.add( ( ( index_0, wire_0 ), ( index_1, wire_1 ) ) )
+        subgraph_stitches[( index_0, wire_0 )] = ( index_1, wire_1 )
 
     # convert the subgraphs into QuantumCircuit objects
     subcircuits = [ qs.converters.dag_to_circuit(graph)
@@ -252,5 +254,5 @@ for old_wire, new_wire in subcirc_wiring.items():
 
 print()
 print("subcircuit stitches:")
-for stitch in subcirc_stitches:
-    print(*stitch[0], "-->", *stitch[1])
+for old_wire, new_wire in subcirc_stitches.items():
+    print(*old_wire, "-->", *new_wire)
