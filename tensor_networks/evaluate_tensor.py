@@ -71,8 +71,6 @@ import qutip as qt
 
 net, nodes, edges = make_net()
 
-edge_idx = { edge : idx for idx, edge in enumerate(list(edges.values())) }
-
 eaten_nodes = set()
 dangling_edges = []
 
@@ -128,24 +126,21 @@ for node_key, node in nodes.items():
 
     # make the matrix square by padding it in with zeros as necessary
     np_matrix = matrix.numpy()
-    matrix_padding = [ (0, 2**max(inp_num,out_num) - matrix_shape[jj])
-                       for jj in range(2) ]
+    matrix_padding = [ (0, 2**max(inp_num,out_num) - matrix_shape[jj]) for jj in range(2) ]
     np_matrix = np.pad(np_matrix, matrix_padding, mode = "constant", constant_values = 0)
     np_matrix = np.kron(np_matrix, np.eye(2**aux_num))
     qt_matrix = qt.Qobj(np_matrix, dims = [ [2]*total_num ]*2) # convert to qutip object
 
     # rearrange qubit order to match that of the swallowing operator
-    op_inp_bit_idx = node_anc_idx + node_inp_idx + node_aux_idx
-    state = state.permute(op_inp_bit_idx)
+    state = state.permute(node_anc_idx + node_inp_idx + node_aux_idx)
 
     # act on the current state by the swallowing operator
     state = qt_matrix * state
 
     # remove extra qubits if necessary
-    trim_num = max(0, inp_num - out_num)
-    if trim_num > 0:
-        total_num -= trim_num
-        state = qt.Qobj(state[:2**total_num], dims = [ [2]*total_num, [1]*total_num ])
+    if out_num < inp_num:
+        kept_num = total_num - inp_num + out_num
+        state = qt.Qobj(state[:2**kept_num], dims = [ [2]*kept_num, [1]*kept_num ])
 
     # add to our list of "eaten" nodes, update the list of dangling edges
     eaten_nodes.add(node)
