@@ -64,12 +64,13 @@ print(net.get_final_node().tensor.numpy())
 import qutip as qt
 
 net, nodes, edges = make_net()
+bubbling_order = nodes.values()
 
 eaten_nodes = set()
 dangling_edges = []
 
 state = qt.basis(1,0)
-for node_key, node in nodes.items():
+for node in bubbling_order:
     # identify input/output edges to this node, and the corresponding axes
     inp_edges, inp_axes = [], []
     out_edges, out_axes = [], []
