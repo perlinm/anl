@@ -59,25 +59,42 @@ def make_net():
 
     return net, nodes, edges
 
+##########################################################################################
+##########################################################################################
+### random network generator
+import networkx as nx
+def make_net(max_nodes = 10, edge_prob = 0.2, seed = 89343892):
+    np.random.seed(seed)
+    graph = nx.binomial_graph(max_nodes, edge_prob, seed = seed)
+    subraghs = nx.connected_component_subgraphs(graph)
+    nx_net = sorted(subraghs, key = lambda x : len(x))[-1]
+
+    net = tn.TensorNetwork()
+
+    nodes = {}
+    for node in nx_net.nodes():
+        shape = [ 2 ] * len(nx_net[node])
+        np_tensor = np.random.rand(*shape)
+        nodes[node] = net.add_node(np_tensor, name = str(node))
+
+    edges = {}
+    axis = [0] * max_nodes
+    for edge in nx_net.edges():
+        fst, snd = edge
+        edges[edge] = net.connect(nodes[fst][axis[fst]], nodes[snd][axis[snd]], name = str(edge))
+        axis[fst] += 1
+        axis[snd] += 1
+
+    return net, nodes, edges
+##########################################################################################
+##########################################################################################
+
 net, nodes, edges = make_net()
-##########################################################################################
-# for node_key, node in nodes.items():
-    # if node_key == (0,0): new_node = nodes[0,0]
-    # else: new_node = net.contract_between(new_node, node)
-    # state = new_node.get_tensor().numpy().flatten()
-    # print(state)
-    # print(node_key, "vals, sum:",
-          # sorted(set(state[:].real.flatten())),
-          # np.sum(state[:].real.astype(int)))
 tn.contractors.naive(net)
-##########################################################################################
 print(net.get_final_node().tensor.numpy())
-print()
 
-
-print("-"*80 + "\n")
 ##########################################################################################
-##########################################################################################
+# evaluation of tensor network via bubbling
 ##########################################################################################
 
 import qutip as qt
