@@ -10,23 +10,8 @@ tf.enable_v2_behavior()
 
 import tensornetwork as tn
 
-size = 3 # linear size of lattice
-dim = 2 # dimension of lattice
 temp = 1 # temperature
-
-tensor_shape = (2,)*4 # dimension of space at each index of the tensor
-
-# define order of indices
-# note that this order is important for how we organize edges later
-rt, dn, lt, up = 0, 1, 2, 3
-
-# map between multi-index value of node and single-integer value of node
-def idx_to_val(idx, dim = dim):
-    if len(idx) == 1: return idx[0]
-    return size * idx_val(idx[:-1], dim-1) + idx[-1]
-def val_to_idx(val, dim = dim):
-    if dim == 1: return (val,)
-    return val_idx(val // size, dim-1) + (val % size,)
+lattice_shape = (3,3) # lattice sites per axis
 
 # value of tensor for particular indices
 def tensor_val(idx):
@@ -34,28 +19,37 @@ def tensor_val(idx):
     return ( 1 + np.prod(s_idx) ) / 2 * np.exp(np.sum(s_idx)/2/temp)
 
 # construct a single tensor in the (translationally-invariant) network
+tensor_shape = (2,)*len(lattice_shape)*2 # dimension of space at each index of the tensor
 tensor_vals = [ tensor_val(idx) for idx in np.ndindex(tensor_shape) ]
 tensor = tf.reshape(tf.constant(tensor_vals), tensor_shape)
 
-def make_net():
-    # initialize empty tensor network
-    net = tn.TensorNetwork()
+# construct tensor network in a hyperrectangular lattice
+def make_net(shape = lattice_shape):
+    net = tn.TensorNetwork() # initialize empty tensor network
 
-    # make all nodes and organize them according to lattice structure
-    # nodes indexed by (pos_x,pos_y) from top left to bottom right
+    # make all nodes, indexed by lattice coorinates
     nodes = { idx : net.add_node(tensor, name = str(idx))
-              for idx in np.ndindex((size,)*dim) }
+              for idx in np.ndindex(shape) }
 
-    # connect all edges and organize them according to lattice structure
-    # edges indexed by (pos_x,pos_y,direction)
-    # where pos_x, and pos_y index the "first" node, and direction is right or down (rt or dn)
-    def idx_next(idx,direction):
-        if direction == rt: return ( idx[0], (idx[1]+1)%size )
-        if direction == dn: return ( (idx[0]+1)%size, idx[1] )
-    edges = { idx + (dir_out,) :
-              net.connect(nodes[idx][dir_out], nodes[idx_next(idx,dir_out)][dir_in],
-                          name = str(idx + (dir_out,)))
-              for idx in nodes.keys() for dir_out, dir_in in [ (rt,lt), (dn,up) ] }
+    # make all edges, indexed by pairs of lattice coordinates
+    edges = {}
+    for axis in range(len(shape)): # for each axis of the lattice
+
+        # choose the axes of tensors that we will contract
+        dir_fst, dir_snd = axis, axis + len(shape)
+
+        for idx_fst in nodes: # loop over all nodes
+
+            # identify the "next" neighboring node along this lattice axis
+            idx_snd = list(idx_fst)
+            idx_snd[dir_fst] = ( idx_snd[dir_fst] + 1 ) % shape[dir_fst]
+            idx_snd = tuple(idx_snd)
+
+            # connect up the nodes
+            edge = (idx_fst,idx_snd)
+            edges[edge] = net.connect(nodes[idx_fst][dir_fst],
+                                      nodes[idx_snd][dir_snd],
+                                      name = str(edge))
 
     return net, nodes, edges
 
