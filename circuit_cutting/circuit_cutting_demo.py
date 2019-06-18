@@ -99,12 +99,12 @@ def trimmed_graph(graph, graph_wires = None):
 
 # accepts a circuit and cuts (qubit, op_number), where op_number is
 #   the number of operations performed on the qubit before the cut; returns:
-# (i) a list of subcircuits,
-# (ii) a list of "stitches" in the format ( ( <index of output subcircuit>, <output wire> ),
-#                                           ( <index of input subcircuit>,  <input wire> ) ),
-# (iii) a dictionary taking input wires of the original circuit to input wires of subcircuits:
-#       { <input wire in the original circuit> :
-#         ( <index of subcircuit>, <corresponding input wire in subcircuit> ) }
+# (i) a list of subcircuits
+# (ii) a dictionary taking input wires of the original circuit to input wires of subcircuits:
+#      { <input wire in the original circuit> :
+#        ( <index of subcircuit>, <corresponding input wire in subcircuit> ) }
+# (iii) a list of "stitches" in the format ( ( <index of output subcircuit>, <output wire> ),
+#                                            ( <index of input subcircuit>,  <input wire> ) )
 def cut_circuit(circuit, *cuts):
     if len(cuts) == 0: return circuit.copy()
 
@@ -198,6 +198,13 @@ def cut_circuit(circuit, *cuts):
         = zip(*[ trimmed_graph(subgraph, wires)
                  for subgraph, wires in zip(subgraphs, subgraph_wires) ])
 
+    # map each input wire in the original circuit to an input wire in subcircuits
+    subcircuit_wiring = {}
+    for subcircuit_index, wire_map in enumerate(wire_maps):
+        for in_wire, out_wire in wire_map.items():
+            if in_wire in circuit.qubits or in_wire in circuit.clbits:
+                subcircuit_wiring[in_wire] = (subcircuit_index, out_wire)
+
     # identify the subgraphs addressing the wires in each stitch
     subgraph_stitches = set()
     for wire_0, wire_1 in stitches:
@@ -210,51 +217,40 @@ def cut_circuit(circuit, *cuts):
         wire_1 = wire_maps[index_1][wire_1]
         subgraph_stitches.add( ( ( index_0, wire_0 ), ( index_1, wire_1 ) ) )
 
-    # map each input wire in the original circuit to an input wire in subcircuits
-    subcircuit_wiring = {}
-    for subcircuit_index, wire_map in enumerate(wire_maps):
-        for in_wire, out_wire in wire_map.items():
-            if in_wire in circuit.qubits or in_wire in circuit.clbits:
-                subcircuit_wiring[in_wire] = (subcircuit_index, out_wire)
-
     # convert the subgraphs into QuantumCircuit objects
     subcircuits = [ qs.converters.dag_to_circuit(graph)
                     for graph in trimmed_subgraphs ]
-    return subcircuits, subgraph_stitches, subcircuit_wiring
+    return subcircuits, subcircuit_wiring, subgraph_stitches
 
 ##########################################################################################
 
 # construct a circuit that makes two bell pairs
-qubits = qs.QuantumRegister(4, "q")
+qubits = qs.QuantumRegister(3, "q")
 circ = qs.QuantumCircuit(qubits)
 circ.h(qubits[0])
 circ.cx(qubits[0], qubits[1])
-circ.barrier()
-circ.h(qubits[2])
-circ.cx(qubits[2], qubits[3])
-
-# add identity operations for good measure (i.e. testing purposes)
+circ.cx(qubits[1], qubits[2])
 circ.barrier()
 for qubit in qubits:
-    circ.iden(qubit)
+    circ.u0(qubit[1], qubit)
 
 print("original circuit:")
 print(circ)
 
-subcircs, subcirc_stitches, subcirc_wiring = cut_circuit(circ, (qubits[0],1), (qubits[2],1))
+subcircs, subcirc_wiring, subcirc_stitches = cut_circuit(circ, (qubits[1],1))
 
 print()
 for jj, subcirc in enumerate(subcircs):
-    print("subcircuit index:",jj)
+    print("subcircuit index:", jj)
     print(subcirc)
     print("--------------------")
-
-print()
-print("subcircuit stitches:")
-for stitch in subcirc_stitches:
-    print(*stitch[0], "-->", *stitch[1])
 
 print()
 print("subcircuit wiring:")
 for old_wire, new_wire in subcirc_wiring.items():
     print(old_wire, "-->", *new_wire)
+
+print()
+print("subcircuit stitches:")
+for stitch in subcirc_stitches:
+    print(*stitch[0], "-->", *stitch[1])
