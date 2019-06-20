@@ -2,17 +2,13 @@
 
 import networkx as nx
 import qiskit as qs
-import copy, random
+import copy
 
 ##########################################################################################
 # this script demonstrates "automatic" cutting of a quantum circuit in qiskit
 # cutting is performed using method described in arxiv.org/abs/1904.00102
 # developed using qiskit version 0.8.1
 ##########################################################################################
-
-# return a random character string of length k
-def random_string(k = 100):
-    return "".join(random.choices("abcdefghijklmnopqrstuvwxyz", k = k))
 
 # get the terminal node of a qubit in a graph
 def terminal_node(graph, qubit, termination_type):
@@ -51,7 +47,7 @@ def disjoint_subgraphs(graph, zip_output = True):
 # "trim" a circuit graph (i.e. in DAG form) by eliminating unused bits
 # optionally accept a set of all used wires (with a promise that the set is correct)
 # return trimmed graph, as well as a dictionary mapping old wires to new ones
-def trimmed_graph(graph, graph_wires = None):
+def trimmed_graph(graph, graph_wires = None, qreg_name = "q", creg_name = "c"):
     # if we were not told which wires are used, figure it out
     if graph_wires is None:
         graph_wires = set()
@@ -72,16 +68,16 @@ def trimmed_graph(graph, graph_wires = None):
     old_clbits = [ wire for wire in graph_wires
                    if type(wire[0]) is qs.circuit.classicalregister.ClassicalRegister ]
     if len(old_qubits) > 0 and len(old_clbits) > 0:
-        new_qubits = qs.QuantumRegister(len(old_qubits),"q")
-        new_clbits = qs.ClassicalRegister(len(old_clbits),"c")
+        new_qubits = qs.QuantumRegister(len(old_qubits), qreg_name)
+        new_clbits = qs.ClassicalRegister(len(old_clbits), creg_name)
         trimmed_circuit = qs.QuantumCircuit(new_qubits, new_clbits)
     elif len(old_qubits) > 0 and len(old_clbits) == 0:
-        new_qubits = qs.QuantumRegister(len(old_qubits),"q")
+        new_qubits = qs.QuantumRegister(len(old_qubits), qreg_name)
         new_clbits = []
         trimmed_circuit = qs.QuantumCircuit(new_qubits)
     elif len(old_qubits) == 0 and len(old_clbits) > 0:
         new_qubits = []
-        new_clbits = qs.ClassicalRegister(len(old_clbits),"c")
+        new_clbits = qs.ClassicalRegister(len(old_clbits), creg_name)
         trimmed_circuit = qs.QuantumCircuit(new_clbits)
     else:
         trimmed_circuit = qs.QuantumCircuit()
@@ -107,7 +103,7 @@ def trimmed_graph(graph, graph_wires = None):
 #       this dictionary takes output wires of subcircuits to input wires of subcircuits:
 #      { ( <index of subcircuit>, <wire in subcircuit> ) :
 #        ( <index of subcircuit>, <wire in subcircuit> ) }
-def cut_circuit(circuit, *cuts):
+def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
     if len(cuts) == 0: return circuit.copy()
 
     # assert that all cut wires are part of a quantum register
@@ -115,7 +111,9 @@ def cut_circuit(circuit, *cuts):
                 for wire, _ in cuts ))
 
     # initialize new qubit register and construct total circuit graph
-    new_register = qs.QuantumRegister(len(cuts),random_string())
+    new_reg_name = "_".join(set( wire[0].prefix
+                                 for wire in circuit.qubits + circuit.clbits )) + "_new"
+    new_register = qs.QuantumRegister(len(cuts),new_reg_name)
     new_wires = iter(new_register)
     graph = qs.converters.circuit_to_dag(circuit.copy())
     graph.add_qreg(new_register)
@@ -197,7 +195,7 @@ def cut_circuit(circuit, *cuts):
 
     # trim subgraphs, eliminating unused bits
     trimmed_subgraphs, wire_maps \
-        = zip(*[ trimmed_graph(subgraph, wires)
+        = zip(*[ trimmed_graph(subgraph, wires, qreg_name, creg_name)
                  for subgraph, wires in zip(subgraphs, subgraph_wires) ])
 
     # map each input wire in the original circuit to an input wire in subcircuits
