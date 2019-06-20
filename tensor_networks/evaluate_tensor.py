@@ -100,19 +100,22 @@ for node in bubbling_order:
     # identify the numbers of different kinds of qubits
     inp_num = len(inp_edges) # number of input qubits to the "bare" swallowing operator
     out_num = len(out_edges) # number of output qubits to the "bare" swallowing operator
-    act_num = max(inp_num,out_num) # number of qubits the swallowing operator acts on
+    act_num = max(inp_num, out_num) # number of qubits the swallowing operator acts on
     aux_num = len(aux_edges) # number of auxiliary qubits
     anc_num = len(state.shape) - ( inp_num + aux_num ) # number of ancilla qubits
 
     # if we gain qubits upon swallowing this tensor,
-    # then we need to attach "extra" (new) qubits to our state
-    state = tf.tensordot(state, zero_state(out_num-inp_num), axes = 0)
+    # then we need "extra" qubits for the unitarized tensor to act on
+    ext_num = max(0, out_num - inp_num) # number of extra qubits we need
+    rec_num = min(anc_num, ext_num) # number of ancillas we can recycle
+    new_num = ext_num - rec_num # number of new qubits
+    state = tf.tensordot(state, zero_state(new_num), axes = 0)
 
     # rearrange the order of qubits in the state
     inp_state_idx = [ dangling_edges.index(edge) for edge in inp_edges ]
     aux_state_idx = [ dangling_edges.index(edge) for edge in aux_edges ]
-    anc_state_idx = list(range(inp_num+aux_num, inp_num+aux_num+anc_num))
-    ext_state_idx = list(range(inp_num+aux_num+anc_num, act_num+aux_num+anc_num))
+    anc_state_idx = list(range(inp_num+aux_num, len(state.shape)-ext_num))
+    ext_state_idx = list(range(len(state.shape)-ext_num, len(state.shape)))
     qubit_order = inp_state_idx + ext_state_idx + aux_state_idx + anc_state_idx
     state = tf.transpose(state, qubit_order)
 
@@ -129,7 +132,7 @@ for node in bubbling_order:
     vals_D, op_V_L, op_V_R = tf.svd(op_matrix)
 
     # rotate into the diagonal basis of D
-    state = tf.reshape(state, (2**act_num,) + (2,)*(aux_num+anc_num))
+    state = tf.reshape(state, (2**act_num,) + (2,)*(len(state.shape)-act_num))
     state = tf.tensordot(tf.transpose(op_V_R, conjugate = True), state, axes = [[1],[0]])
 
     # normalize D by its operator norm, keeping track of the norm independently
@@ -150,7 +153,7 @@ for node in bubbling_order:
 
     # rotate back to the standard qubit basis
     state = tf.tensordot(op_V_L, state, axes = [ [1], [0] ])
-    state = tf.reshape(state, (2,)*(act_num+aux_num+anc_num+1))
+    state = tf.reshape(state, (2,)*(act_num+aux_num+anc_num-rec_num+1))
 
     # remove (project out) unused qubits from the state
     state = tf.tensordot(zero_state(inp_num-out_num), state,
