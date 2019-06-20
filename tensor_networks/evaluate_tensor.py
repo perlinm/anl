@@ -61,9 +61,11 @@ print(net.get_final_node().tensor.numpy())
 # evaluation of tensor network via bubbling
 ##########################################################################################
 
+dtype = tf.float64
+
 def zero_state(length):
     length = max(0,length)
-    return tf.reshape(tf.one_hot(0, 2**length, dtype = tf.float64), (2,)*length)
+    return tf.reshape(tf.one_hot(0, 2**length, dtype = dtype), (2,)*length)
 
 net, nodes, edges = make_net()
 bubbling_order = nodes.values()
@@ -71,12 +73,13 @@ bubbling_order = nodes.values()
 eaten_nodes = set()
 dangling_edges = []
 
+norm_product = 1
 state = zero_state(0)
 for node in bubbling_order:
 
     # identify input/output edges to this node, and the corresponding axes
-    inp_edges, inp_axes = [], []
-    out_edges, out_axes = [], []
+    inp_edges, inp_op_idx = [], []
+    out_edges, out_op_idx = [], []
     for edge in node.get_all_edges():
         if node == edge.node1:
             axis_to_other = edge.axis1
@@ -86,42 +89,71 @@ for node in bubbling_order:
             other_node = edge.node1
         if other_node in eaten_nodes:
             inp_edges.append(edge)
-            inp_axes.append(axis_to_other)
+            inp_op_idx.append(axis_to_other)
         else:
             out_edges.append(edge)
-            out_axes.append(axis_to_other)
+            out_op_idx.append(axis_to_other)
 
     # identify auxiliary dangling edges that do not participate in swallowing this node
     aux_edges = [ edge for edge in dangling_edges if edge not in inp_edges ]
 
-    # identify number of input, output, and auxiliary edges (<--> qubits)
-    inp_num = len(inp_edges)
-    out_num = len(out_edges)
-    aux_num = len(aux_edges)
+    # identify the numbers of different kinds of qubits
+    inp_num = len(inp_edges) # number of input qubits to the "bare" swallowing operator
+    out_num = len(out_edges) # number of output qubits to the "bare" swallowing operator
+    act_num = max(inp_num,out_num) # number of qubits the swallowing operator acts on
+    aux_num = len(aux_edges) # number of auxiliary qubits
+    anc_num = len(state.shape) - ( inp_num + aux_num ) # number of ancilla qubits
 
-    # total number of qubits necessary to swallow this node
-    total_num = max(inp_num,out_num) + aux_num
-
-    # get the tensor associated with this node, reordering axes appropriately
-    op_tensor = tf.transpose(node.get_tensor(), out_axes + inp_axes)
-
-    # attach ancillary input/output legs to make the swallowing operator "square"
-    op_tensor = tf.tensordot(op_tensor, zero_state(out_num-inp_num), axes = 0) # input ancillas
-    op_tensor = tf.tensordot(zero_state(inp_num-out_num), op_tensor, axes = 0) # output ancillas
-    op_num = len(op_tensor.shape)//2 # qubit tensor factors in the domain/range of op_tensor
-
-    # add ancilla qubits to the state, if necessary
+    # if we gain qubits upon swallowing this tensor,
+    # then we need to attach "extra" (new) qubits to our state
     state = tf.tensordot(state, zero_state(out_num-inp_num), axes = 0)
 
-    # act the swallowing operator on the state
-    op_axes = list(range(op_num,2*op_num)) # second half of the axes
-    inp_node_idx = [ dangling_edges.index(edge) for edge in inp_edges ] # indices of input qubits
-    anc_node_idx = list(range(len(dangling_edges), total_num)) # indices of ancilla qubits
-    state_axes = inp_node_idx + anc_node_idx # indices of qubits addressed by op_tensor
-    state = tf.tensordot(op_tensor, state, axes = [ op_axes, state_axes ])
+    # rearrange the order of qubits in the state
+    inp_state_idx = [ dangling_edges.index(edge) for edge in inp_edges ]
+    aux_state_idx = [ dangling_edges.index(edge) for edge in aux_edges ]
+    anc_state_idx = list(range(inp_num+aux_num, inp_num+aux_num+anc_num))
+    ext_state_idx = list(range(inp_num+aux_num+anc_num, act_num+aux_num+anc_num))
+    qubit_order = inp_state_idx + ext_state_idx + aux_state_idx + anc_state_idx
+    state = tf.transpose(state, qubit_order)
+
+    # get the tensor associated with this node, reordering axes as necessary
+    op_tensor = tf.transpose(node.get_tensor(), out_op_idx + inp_op_idx)
+
+    # attach extra input/output legs to make the swallowing operator "square"
+    op_tensor = tf.tensordot(op_tensor, zero_state(out_num-inp_num), axes = 0) # extra inputs
+    op_tensor = tf.tensordot(zero_state(inp_num-out_num), op_tensor, axes = 0) # extra outputs
+
+    # perform singular-value decomposition (SVD) of op_tensor as T = V_L @ D @ V_R^\dag,
+    # where V_L, V_R are unitary; and D is diagonal and positive semi-definite
+    op_matrix = tf.reshape(op_tensor, (2**act_num,)*2)
+    vals_D, op_V_L, op_V_R = tf.svd(op_matrix)
+
+    # rotate into the diagonal basis of D
+    state = tf.reshape(state, (2**act_num,) + (2,)*(aux_num+anc_num))
+    state = tf.tensordot(tf.transpose(op_V_R, conjugate = True), state, axes = [[1],[0]])
+
+    # normalize D by its operator norm, keeping track of the norm independently
+    norm_D = max(vals_D.numpy())
+    normed_vals_D = vals_D/norm_D
+    norm_product *= norm_D
+
+    # construct the unitary action of D
+    op_U_D = tf.tensordot(tf.eye(2, dtype = dtype),
+                          tf.diag(normed_vals_D), axes = 0) \
+           + tf.tensordot(tf.constant([[0,-1],[1,0]], dtype = dtype),
+                          tf.diag(tf.sqrt(1-normed_vals_D**2)), axes = 0)
+
+    # attach ancilla, act on the state by the unitary U_D, and throw ancilla in the back
+    state = tf.tensordot(zero_state(1), state, axes = 0)
+    state = tf.tensordot(op_U_D, state, axes = [ [1,3], [0,1] ])
+    state = tf.transpose(state, list(np.roll(range(len(state.shape)),-1)))
+
+    # rotate back to the standard qubit basis
+    state = tf.tensordot(op_V_L, state, axes = [ [1], [0] ])
+    state = tf.reshape(state, (2,)*(act_num+aux_num+anc_num+1))
 
     # remove (project out) unused qubits from the state
-    state = tf.tensordot(state, zero_state(inp_num-out_num),
+    state = tf.tensordot(zero_state(inp_num-out_num), state,
                          axes = [ list(range(inp_num-out_num)),
                                   list(range(inp_num-out_num)) ] )
 
@@ -131,4 +163,6 @@ for node in bubbling_order:
         dangling_edges.remove(edge)
     dangling_edges = out_edges + dangling_edges
 
-print(state.numpy())
+print("norm:", norm_product)
+print("probability:", state.numpy().flatten()[0]**2)
+print("value:", norm_product * state.numpy().flatten()[0])
