@@ -19,6 +19,8 @@ def quantum_contract(nodes, print_status = False, tf_dtype = tf.float64):
     tf_eye = tf.eye(2, dtype = tf_dtype)
     tf_iY = tf.constant([[0,1],[-1,0]], dtype = tf_dtype)
 
+    max_qubits_mem = 0
+    max_qubits_op = 0
     net_norm = 1
     state = zero_state(0)
 
@@ -103,6 +105,20 @@ def quantum_contract(nodes, print_status = False, tf_dtype = tf.float64):
         state = tf.tensordot(zero_state(inp_num-out_num), state,
                              axes = [ list(range(inp_num-out_num)) ]*2)
 
+        # add to our list of "eaten" nodes, update the list of dangling edges
+        eaten_nodes.add(node)
+        for edge in inp_edges:
+            dangling_edges.remove(edge)
+        dangling_edges = out_edges + dangling_edges
+
+        # number of qubits required for this step,
+        # and the number of qubits the current unitarized swallowing operators acts on
+        node_qubits_mem = len(state.shape) + max(0, inp_num-out_num) + 1
+        node_qubits_op = op_U_D.shape[-1].bit_length()-1
+
+        max_qubits_mem = max(max_qubits_mem, node_qubits_mem)
+        max_qubits_op = max(max_qubits_op, node_qubits_op)
+
         # print status info
         if print_status:
             # the node we just swallowed
@@ -110,9 +126,7 @@ def quantum_contract(nodes, print_status = False, tf_dtype = tf.float64):
 
             # the number of memory qubits,
             # and the number of qubits the unitary swallowing operator acts on
-            mem_qubits = len(state.shape) + max(0, inp_num-out_num) + 1
-            op_qubits = op_U_D.shape[-1].bit_length()-1
-            print("qubits (mem, op):", mem_qubits, op_qubits)
+            print("qubits (mem, op):", node_qubits_mem, node_qubits_op)
 
             # the norm of the state after swallowing this node and projecting out ancillas
             state_norm = tf.tensordot(tf.transpose(state, conjugate = True), state,
@@ -120,11 +134,5 @@ def quantum_contract(nodes, print_status = False, tf_dtype = tf.float64):
             print("norm:", state_norm)
             print("-"*10)
 
-        # add to our list of "eaten" nodes, update the list of dangling edges
-        eaten_nodes.add(node)
-        for edge in inp_edges:
-            dangling_edges.remove(edge)
-        dangling_edges = out_edges + dangling_edges
-
     assert(state.shape == ()) # we should have contracted out the entire state
-    return state.numpy()**2, net_norm
+    return state.numpy()**2, net_norm, max_qubits_mem, max_qubits_op
