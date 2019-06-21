@@ -13,21 +13,23 @@ import tensornetwork as tn
 temp = 1 # temperature
 lattice_shape = (3,3) # lattice sites per axis
 
-# value of tensor for particular indices
-def tensor_val(idx):
+# value of tensor at a given temperature for particular indices
+def tensor_val(idx, temp):
     s_idx = 2 * np.array(idx) - 1
     return ( 1 + np.prod(s_idx) ) / 2 * np.exp(np.sum(s_idx)/2/temp)
 
-# construct a single tensor in the (translationally-invariant) network
-tensor_shape = (2,)*len(lattice_shape)*2 # dimension of space at each index of the tensor
-tensor_vals = [ tensor_val(idx) for idx in np.ndindex(tensor_shape) ]
-tensor = tf.reshape(tf.constant(tensor_vals), tensor_shape)
+# for a given temperature, return a single tensor in the (translationally-invariant) network
+def make_tensor(temp, shape):
+    tensor_shape = (2,)*len(shape)*2 # dimension of space at each index of the tensor
+    tensor_vals = [ tensor_val(idx, temp) for idx in np.ndindex(tensor_shape) ]
+    return tf.reshape(tf.constant(tensor_vals), tensor_shape)
 
 # construct tensor network in a hyperrectangular lattice
-def make_net(shape = lattice_shape):
+def make_net(temp, shape = lattice_shape):
     net = tn.TensorNetwork() # initialize empty tensor network
 
     # make all nodes, indexed by lattice coorinates
+    tensor = make_tensor(temp, shape)
     nodes = { idx : net.add_node(tensor, name = str(idx))
               for idx in np.ndindex(shape) }
 
@@ -53,7 +55,7 @@ def make_net(shape = lattice_shape):
 
     return net, nodes, edges
 
-net, nodes, edges = make_net()
+net, nodes, edges = make_net(temp)
 tn.contractors.naive(net)
 print(net.get_final_node().tensor.numpy())
 
@@ -63,19 +65,20 @@ print(net.get_final_node().tensor.numpy())
 
 dtype = tf.float64
 
-def zero_state(length):
+def zero_state(length, index = 0):
     length = max(0,length)
-    return tf.reshape(tf.one_hot(0, 2**length, dtype = dtype), (2,)*length)
+    index = index % 2**length
+    return tf.reshape(tf.one_hot(index, 2**length, dtype = dtype), (2,)*length)
 
-net, nodes, edges = make_net()
+net, nodes, edges = make_net(temp)
 bubbling_order = nodes.values()
 
 eaten_nodes = set()
 dangling_edges = []
 
-norm_product = 1
+net_norm = 1
 state = zero_state(0)
-for node in bubbling_order:
+for node_idx, node in enumerate(bubbling_order):
 
     # identify input/output edges to this node, and the corresponding axes
     inp_edges, inp_op_idx = [], []
@@ -101,22 +104,19 @@ for node in bubbling_order:
     inp_num = len(inp_edges) # number of input qubits to the "bare" swallowing operator
     out_num = len(out_edges) # number of output qubits to the "bare" swallowing operator
     act_num = max(inp_num, out_num) # number of qubits the swallowing operator acts on
-    aux_num = len(aux_edges) # number of auxiliary qubits
-    anc_num = len(state.shape) - ( inp_num + aux_num ) # number of ancilla qubits
+    aux_num = len(aux_edges) # number of auxiliary (bystander) qubits
+    assert(aux_num == len(state.shape) - inp_num) # sanity check
 
     # if we gain qubits upon swallowing this tensor,
     # then we need "extra" qubits for the unitarized tensor to act on
-    ext_num = max(0, out_num - inp_num) # number of extra qubits we need
-    rec_num = min(anc_num, ext_num) # number of ancillas we can recycle
-    new_num = ext_num - rec_num # number of new qubits
-    state = tf.tensordot(state, zero_state(new_num), axes = 0)
+    ext_num = max(0, out_num-inp_num) # number of extra qubits we need
+    state = tf.tensordot(state, zero_state(ext_num), axes = 0)
 
     # rearrange the order of qubits in the state
     inp_state_idx = [ dangling_edges.index(edge) for edge in inp_edges ]
     aux_state_idx = [ dangling_edges.index(edge) for edge in aux_edges ]
-    anc_state_idx = list(range(inp_num+aux_num, len(state.shape)-ext_num))
     ext_state_idx = list(range(len(state.shape)-ext_num, len(state.shape)))
-    qubit_order = inp_state_idx + ext_state_idx + aux_state_idx + anc_state_idx
+    qubit_order = inp_state_idx + ext_state_idx + aux_state_idx
     state = tf.transpose(state, qubit_order)
 
     # get the tensor associated with this node, reordering axes as necessary
@@ -138,7 +138,7 @@ for node in bubbling_order:
     # normalize D by its operator norm, keeping track of the norm independently
     norm_D = max(vals_D.numpy())
     normed_vals_D = vals_D/norm_D
-    norm_product *= norm_D
+    net_norm *= norm_D
 
     # construct the unitary action of D
     op_U_D = tf.tensordot(tf.eye(2, dtype = dtype),
@@ -146,19 +146,25 @@ for node in bubbling_order:
            + tf.tensordot(tf.constant([[0,-1],[1,0]], dtype = dtype),
                           tf.diag(tf.sqrt(1-normed_vals_D**2)), axes = 0)
 
-    # attach ancilla, act on the state by the unitary U_D, and throw ancilla in the back
+    # attach ancilla, act on the state by the unitary U_D, and remove (project out) the ancilla
     state = tf.tensordot(zero_state(1), state, axes = 0)
     state = tf.tensordot(op_U_D, state, axes = [ [1,3], [0,1] ])
-    state = tf.transpose(state, list(np.roll(range(len(state.shape)),-1)))
+    state = tf.tensordot(zero_state(1), state, axes = [ [0], [0] ] )
 
     # rotate back to the standard qubit basis
     state = tf.tensordot(op_V_L, state, axes = [ [1], [0] ])
-    state = tf.reshape(state, (2,)*(act_num+aux_num+anc_num-rec_num+1))
+    state = tf.reshape(state, (2,)*(act_num+aux_num))
+
+    print()
+    print(f"node, qubits: {node_idx}, {len(state.shape)+1}")
 
     # remove (project out) unused qubits from the state
     state = tf.tensordot(zero_state(inp_num-out_num), state,
-                         axes = [ list(range(inp_num-out_num)),
-                                  list(range(inp_num-out_num)) ] )
+                         axes = [ list(range(inp_num-out_num)) ]*2)
+
+    state_norm = tf.tensordot(tf.transpose(state, conjugate = True), state,
+                              axes = [ list(range(len(state.shape))) ]*2).numpy()
+    print("norm:", state_norm)
 
     # add to our list of "eaten" nodes, update the list of dangling edges
     eaten_nodes.add(node)
@@ -166,6 +172,6 @@ for node in bubbling_order:
         dangling_edges.remove(edge)
     dangling_edges = out_edges + dangling_edges
 
-print("norm:", norm_product)
+print()
 print("probability:", state.numpy().flatten()[0]**2)
-print("value:", norm_product * state.numpy().flatten()[0])
+print("network value:", net_norm * state.numpy().flatten()[0])
