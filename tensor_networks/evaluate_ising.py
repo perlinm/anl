@@ -63,7 +63,7 @@ def make_net(inv_temp, lattice_shape):
 # compute various quantities and plot them
 ##########################################################################################
 
-steps = 20
+steps = 50
 max_inv_temp = 1.5
 lattice_shape = (4,4)
 figsize = (4,3)
@@ -71,25 +71,11 @@ figsize = (4,3)
 inv_temps = np.linspace(0, max_inv_temp, steps)
 vals_Z = np.zeros(steps)
 probs = np.zeros(steps)
-error = np.zeros(steps)
 for jj in range(steps):
-    net, nodes, edges = make_net(inv_temps[jj], lattice_shape)
+    _, nodes, _ = make_net(inv_temps[jj], lattice_shape)
     net_prob, net_norm, qubits_mem, qubits_op = quantum_contract(nodes.values())
     probs[jj] = net_prob
     vals_Z[jj] = net_norm * np.sqrt(net_prob)
-
-    tn.contractors.naive(net)
-    tn_val_Z = net.get_final_node().tensor.numpy()
-    error[jj] = vals_Z[jj] / tn_val_Z - 1
-
-# fractional error of the quantum contraction method
-plt.figure(figsize = figsize)
-plt.plot(inv_temps, error, "k.")
-plt.xlim(0, inv_temps.max())
-plt.ylim(0, plt.gca().get_ylim()[1])
-plt.xlabel(r"$J/T$")
-plt.ylabel(r"$\epsilon$")
-plt.tight_layout()
 
 # log(Z) / V
 plt.figure(figsize = figsize)
@@ -100,13 +86,13 @@ plt.xlabel(r"$J/T$")
 plt.ylabel(r"$\log(Z)/V$")
 plt.tight_layout()
 
-# probability of "success" -- finding all ancillas in |0>
+# probability of "acceptance" -- finding all ancillas in |0>
 plt.figure(figsize = figsize)
 plt.plot(inv_temps, probs, "k.")
 plt.xlim(0, inv_temps.max())
 plt.ylim(0, plt.gca().get_ylim()[1])
 plt.xlabel(r"$J/T$")
-plt.ylabel(r"$p$")
+plt.ylabel("acceptance probability")
 plt.tight_layout()
 
 plt.show()
