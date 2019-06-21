@@ -109,7 +109,7 @@ for node_idx, node in enumerate(bubbling_order):
 
     # if we gain qubits upon swallowing this tensor,
     # then we need "extra" qubits for the unitarized tensor to act on
-    ext_num = max(0, out_num-inp_num) # number of extra qubits we need
+    ext_num = max(0, out_num - inp_num) # number of extra qubits we need
     state = tf.tensordot(state, zero_state(ext_num), axes = 0)
 
     # rearrange the order of qubits in the state
@@ -156,7 +156,8 @@ for node_idx, node in enumerate(bubbling_order):
     state = tf.reshape(state, (2,)*(act_num+aux_num))
 
     print()
-    print(f"node, qubits: {node_idx}, {len(state.shape)+1}")
+    print("node:", node_idx, node)
+    print("qubits (mem, op):", len(state.shape)+1, op_U_D.shape[-1].bit_length()-1)
 
     # remove (project out) unused qubits from the state
     state = tf.tensordot(zero_state(inp_num-out_num), state,
