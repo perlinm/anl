@@ -10,7 +10,7 @@ tf.enable_v2_behavior()
 import tensornetwork as tn
 
 import matplotlib.pyplot as plt
-from quantum_contract import quantum_contract
+from tensor_contraction import quantum_contraction, classical_contraction
 
 ##########################################################################################
 # method for constructing a tensor network that represents the partition function
@@ -73,15 +73,18 @@ inv_temp_crit = np.log(1+np.sqrt(2)) / 2
 inv_temps = np.linspace(0, max_inv_temp, steps)
 vals_Z = np.zeros(steps)
 probs = np.zeros(steps)
-
+norms = np.zeros(steps)
 for jj in range(steps):
-    _, nodes, _ = make_net(inv_temps[jj], lattice_shape)
-    vals_Z[jj], probs[jj], qubits_mem, qubits_op = quantum_contract(nodes.values())
+    net, nodes, _ = make_net(inv_temps[jj], lattice_shape)
+    bubbler = nodes.values()
+    vals_Z[jj], probs[jj], qubits_mem, qubits_op = classical_contraction(net, bubbler)
+    norms[jj] = vals_Z[jj] / np.sqrt(probs[jj])
 
 print("qubits (mem, op):", qubits_mem, qubits_op)
 
 # log(Z) / V
 plt.figure(figsize = figsize)
+plt.title(f"lattice size: {lattice_shape}")
 plt.plot(inv_temps, np.log(vals_Z) / np.prod(lattice_shape), "k.")
 plt.axvline(inv_temp_crit, color = "gray", linestyle = "--", linewidth = 1)
 plt.xlim(0, inv_temps.max())
@@ -90,12 +93,22 @@ plt.xlabel(r"$J/T$")
 plt.ylabel(r"$\log(Z)/V$")
 plt.tight_layout()
 
-# probability of "acceptance" -- finding all ancillas in |0>
+# "norm" of the network
 plt.figure(figsize = figsize)
-plt.plot(inv_temps, probs, "k.")
+plt.title(f"lattice size: {lattice_shape}")
+plt.semilogy(inv_temps, norms, "k.")
 plt.axvline(inv_temp_crit, color = "gray", linestyle = "--", linewidth = 1)
 plt.xlim(0, inv_temps.max())
-plt.ylim(0, plt.gca().get_ylim()[1])
+plt.xlabel(r"$J/T$")
+plt.ylabel("network norm")
+plt.tight_layout()
+
+# probability of "acceptance" -- finding all ancillas in |0>
+plt.figure(figsize = figsize)
+plt.title(f"lattice size: {lattice_shape}")
+plt.semilogy(inv_temps, probs, "k.")
+plt.axvline(inv_temp_crit, color = "gray", linestyle = "--", linewidth = 1)
+plt.xlim(0, inv_temps.max())
 plt.xlabel(r"$J/T$")
 plt.ylabel("acceptance probability")
 plt.tight_layout()

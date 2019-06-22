@@ -1,12 +1,36 @@
 #!/usr/bin/env python3
 
+import os
+
 import tensorflow as tf
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+tf.enable_v2_behavior()
+import tensornetwork as tn
 
 # return a pure state of given number of qubits
 def idx_state(index, qubits, tf_dtype):
     qubits = max(0,qubits)
     dim = 2**qubits
     return tf.reshape(tf.one_hot(index % dim, dim, dtype = tf_dtype), (2,)*qubits)
+
+# identify input/output edges to this node, as well as the corresponding axes
+def get_edge_info(node, eaten_nodes):
+    inp_edges, inp_op_idx = [], []
+    out_edges, out_op_idx = [], []
+    for edge in node.get_all_edges():
+        if node == edge.node1:
+            axis_to_other = edge.axis1
+            other_node = edge.node2
+        else:
+            axis_to_other = edge.axis2
+            other_node = edge.node1
+        if other_node in eaten_nodes:
+            inp_edges.append(edge)
+            inp_op_idx.append(axis_to_other)
+        else:
+            out_edges.append(edge)
+            out_op_idx.append(axis_to_other)
+    return inp_edges, inp_op_idx, out_edges, out_op_idx
 
 # simulate the contracting of a tensor network using a computer
 # uses the method described in arxiv.org/abs/0805.0040
@@ -16,7 +40,7 @@ def idx_state(index, qubits, tf_dtype):
 # (ii) probability of "success", i.e. finding all ancillas in |0>,
 # (iii) the number of qubits necessary to run the computation, and
 # (iv) the maximum number of qubits addressed by a single unitary
-def quantum_contract(nodes, print_status = False, fake = False, tf_dtype = tf.float64):
+def quantum_contraction(bubbler, print_status = False, tf_dtype = tf.float64):
     zero_state = lambda qubits : idx_state(0, qubits, tf_dtype)
     tf_eye = tf.eye(2, dtype = tf_dtype)
     tf_iY = tf.constant([[0,1],[-1,0]], dtype = tf_dtype)
@@ -28,24 +52,8 @@ def quantum_contract(nodes, print_status = False, fake = False, tf_dtype = tf.fl
 
     eaten_nodes = set()
     dangling_edges = []
-
-    for node_idx, node in enumerate(nodes):
-        # identify input/output edges to this node, and the corresponding axes
-        inp_edges, inp_op_idx = [], []
-        out_edges, out_op_idx = [], []
-        for edge in node.get_all_edges():
-            if node == edge.node1:
-                axis_to_other = edge.axis1
-                other_node = edge.node2
-            else:
-                axis_to_other = edge.axis2
-                other_node = edge.node1
-            if other_node in eaten_nodes:
-                inp_edges.append(edge)
-                inp_op_idx.append(axis_to_other)
-            else:
-                out_edges.append(edge)
-                out_op_idx.append(axis_to_other)
+    for node_idx, node in enumerate(bubbler):
+        inp_edges, inp_op_idx, out_edges, out_op_idx = get_edge_info(node, eaten_nodes)
 
         # identify auxiliary dangling edges that do not participate in swallowing this node
         aux_edges = [ edge for edge in dangling_edges if edge not in inp_edges ]
@@ -56,6 +64,13 @@ def quantum_contract(nodes, print_status = False, fake = False, tf_dtype = tf.fl
         act_num = max(inp_num, out_num) # number of qubits the swallowing operator acts on
         aux_num = len(aux_edges) # number of auxiliary (bystander) qubits
         assert(aux_num == len(state.shape) - inp_num) # sanity check
+
+        # number of qubits required for this step,
+        # and the number of qubits the current unitarized swallowing operators acts on
+        node_qubits_mem = aux_num + act_num + 1
+        node_qubits_op = act_num + 1
+        max_qubits_mem = max(max_qubits_mem, node_qubits_mem)
+        max_qubits_op = max(max_qubits_op, node_qubits_op)
 
         # if we gain qubits upon swallowing this tensor,
         # then we need "extra" qubits for the unitarized tensor to act on
@@ -113,14 +128,6 @@ def quantum_contract(nodes, print_status = False, fake = False, tf_dtype = tf.fl
             dangling_edges.remove(edge)
         dangling_edges = out_edges + dangling_edges
 
-        # number of qubits required for this step,
-        # and the number of qubits the current unitarized swallowing operators acts on
-        node_qubits_mem = len(state.shape) + max(0, inp_num-out_num) + 1
-        node_qubits_op = op_U_D.shape[-1].bit_length()-1
-
-        max_qubits_mem = max(max_qubits_mem, node_qubits_mem)
-        max_qubits_op = max(max_qubits_op, node_qubits_op)
-
         # print status info
         if print_status:
             # the node we just swallowed
@@ -140,4 +147,52 @@ def quantum_contract(nodes, print_status = False, fake = False, tf_dtype = tf.fl
 
     net_prob = state.numpy()**2
     net_val = net_norm * state.numpy()
+    return net_val, net_prob, max_qubits_mem, max_qubits_op
+
+# classical backend to quantum_contraction
+# accepts both a TensorNetwork object and a bubbler as input
+# same outputs as quantum_contraction
+def classical_contraction(net, bubbler, tf_dtype = tf.float64):
+
+    max_qubits_mem = 0
+    max_qubits_op = 0
+    net_norm = 1
+
+    eaten_nodes = set()
+    dangling_edges = []
+    for node in bubbler:
+        inp_edges, inp_op_idx, out_edges, out_op_idx = get_edge_info(node, eaten_nodes)
+
+        # identify auxiliary dangling edges that do not participate in swallowing this node
+        aux_edges = [ edge for edge in dangling_edges if edge not in inp_edges ]
+
+        inp_num = len(inp_edges) # number of input qubits to the "bare" swallowing operator
+        out_num = len(out_edges) # number of output qubits to the "bare" swallowing operator
+        act_num = max(inp_num, out_num) # number of qubits the swallowing operator acts on
+        aux_num = len(aux_edges) # number of auxiliary (bystander) qubits
+
+        # number of qubits required for this step,
+        # and the number of qubits the current unitarized swallowing operators acts on
+        node_qubits_mem = aux_num + act_num + 1
+        node_qubits_op = act_num + 1
+        max_qubits_mem = max(max_qubits_mem, node_qubits_mem)
+        max_qubits_op = max(max_qubits_op, node_qubits_op)
+
+        # get the tensor associated with this node, reordering axes as necessary
+        op_tensor = tf.transpose(node.get_tensor(), out_op_idx + inp_op_idx)
+        op_matrix = tf.reshape(op_tensor, (2**out_num, 2**inp_num))
+        vals_D, _, _ = tf.svd(op_matrix)
+        net_norm *= vals_D.numpy().max()
+
+        # add to our list of "eaten" nodes, update the list of dangling edges
+        eaten_nodes.add(node)
+        for edge in inp_edges:
+            dangling_edges.remove(edge)
+        dangling_edges = out_edges + dangling_edges
+
+    # compute value of network
+    tn.contractors.naive(net)
+    net_val = net.get_final_node().tensor.numpy()
+
+    net_prob = ( net_val / net_norm )**2
     return net_val, net_prob, max_qubits_mem, max_qubits_op
