@@ -3,18 +3,20 @@
 import tensorflow as tf
 
 # return a pure state of given number of qubits
-def idx_state(index, qubits, dtype):
+def idx_state(index, qubits, tf_dtype):
     qubits = max(0,qubits)
-    dimension = 2**qubits
-    return tf.reshape(tf.one_hot(index % dimension, dimension, dtype = dtype), (2,)*qubits)
+    dim = 2**qubits
+    return tf.reshape(tf.one_hot(index % dim, dim, dtype = tf_dtype), (2,)*qubits)
 
 # simulate the contracting of a tensor network using a computer
 # uses the method described in arxiv.org/abs/0805.0040
 # accepts: a list of TensorNetwork nodes in bubbling order
 # returns:
-# (i) the probability of "success", i.e. finding all ancillas in |0>, and
-# (ii) the norm of the network, i.e. the product of the norms of all swallowing operators
-def quantum_contract(nodes, print_status = False, tf_dtype = tf.float64):
+# (i) the value of the tensor network
+# (ii) probability of "success", i.e. finding all ancillas in |0>,
+# (iii) the number of qubits necessary to run the computation, and
+# (iv) the maximum number of qubits addressed by a single unitary
+def quantum_contract(nodes, print_status = False, fake = False, tf_dtype = tf.float64):
     zero_state = lambda qubits : idx_state(0, qubits, tf_dtype)
     tf_eye = tf.eye(2, dtype = tf_dtype)
     tf_iY = tf.constant([[0,1],[-1,0]], dtype = tf_dtype)
@@ -135,4 +137,7 @@ def quantum_contract(nodes, print_status = False, tf_dtype = tf.float64):
             print("-"*10)
 
     assert(state.shape == ()) # we should have contracted out the entire state
-    return state.numpy()**2, net_norm, max_qubits_mem, max_qubits_op
+
+    net_prob = state.numpy()**2
+    net_val = net_norm * state.numpy()
+    return net_val, net_prob, max_qubits_mem, max_qubits_op

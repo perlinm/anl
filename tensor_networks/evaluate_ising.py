@@ -73,11 +73,10 @@ inv_temp_crit = np.log(1+np.sqrt(2)) / 2
 inv_temps = np.linspace(0, max_inv_temp, steps)
 vals_Z = np.zeros(steps)
 probs = np.zeros(steps)
+
 for jj in range(steps):
     _, nodes, _ = make_net(inv_temps[jj], lattice_shape)
-    net_prob, net_norm, qubits_mem, qubits_op = quantum_contract(nodes.values())
-    probs[jj] = net_prob
-    vals_Z[jj] = net_norm * np.sqrt(net_prob)
+    vals_Z[jj], probs[jj], qubits_mem, qubits_op = quantum_contract(nodes.values())
 
 print("qubits (mem, op):", qubits_mem, qubits_op)
 
