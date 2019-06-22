@@ -64,9 +64,11 @@ def make_net(inv_temp, lattice_shape):
 ##########################################################################################
 
 steps = 50
-max_inv_temp = 1.5
-lattice_shape = (4,4)
+max_inv_temp = 2
+lattice_shape = (5,5)
 figsize = (4,3)
+
+inv_temp_crit = np.log(1+np.sqrt(2)) / 2
 
 inv_temps = np.linspace(0, max_inv_temp, steps)
 vals_Z = np.zeros(steps)
@@ -77,9 +79,12 @@ for jj in range(steps):
     probs[jj] = net_prob
     vals_Z[jj] = net_norm * np.sqrt(net_prob)
 
+print("qubits (mem, op):", qubits_mem, qubits_op)
+
 # log(Z) / V
 plt.figure(figsize = figsize)
 plt.plot(inv_temps, np.log(vals_Z) / np.prod(lattice_shape), "k.")
+plt.axvline(inv_temp_crit, color = "gray", linestyle = "--", linewidth = 1)
 plt.xlim(0, inv_temps.max())
 plt.ylim(0, plt.gca().get_ylim()[1])
 plt.xlabel(r"$J/T$")
@@ -89,6 +94,7 @@ plt.tight_layout()
 # probability of "acceptance" -- finding all ancillas in |0>
 plt.figure(figsize = figsize)
 plt.plot(inv_temps, probs, "k.")
+plt.axvline(inv_temp_crit, color = "gray", linestyle = "--", linewidth = 1)
 plt.xlim(0, inv_temps.max())
 plt.ylim(0, plt.gca().get_ylim()[1])
 plt.xlabel(r"$J/T$")
