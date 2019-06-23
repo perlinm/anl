@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import numpy as np
 
 import tensorflow as tf
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
@@ -36,8 +37,8 @@ def get_edge_info(node, eaten_nodes):
 # uses the method described in arxiv.org/abs/0805.0040
 # accepts: a list of TensorNetwork nodes in bubbling order
 # returns:
-# (i) the value of the tensor network
-# (ii) probability of "success", i.e. finding all ancillas in |0>,
+# (i) the probability of "success", i.e. finding all ancillas in |0>,
+# (i) the logarithm of the network "norm"
 # (iii) the number of qubits necessary to run the computation, and
 # (iv) the maximum number of qubits addressed by a single unitary
 def quantum_contraction(bubbler, print_status = False, tf_dtype = tf.float64):
@@ -47,7 +48,7 @@ def quantum_contraction(bubbler, print_status = False, tf_dtype = tf.float64):
 
     max_qubits_mem = 0
     max_qubits_op = 0
-    net_norm = 1
+    log_net_norm = 0
     state = zero_state(0)
 
     eaten_nodes = set()
@@ -103,7 +104,7 @@ def quantum_contraction(bubbler, print_status = False, tf_dtype = tf.float64):
         # normalize D by its operator norm, keeping track of the norm independently
         norm_D = max(vals_D.numpy())
         normed_vals_D = vals_D/norm_D
-        net_norm *= norm_D
+        log_net_norm += np.log(norm_D)
 
         # construct the unitary action of D
         op_U_D = tf.tensordot(tf_eye, tf.diag(normed_vals_D), axes = 0) \
@@ -144,10 +145,8 @@ def quantum_contraction(bubbler, print_status = False, tf_dtype = tf.float64):
             print("-"*10)
 
     assert(state.shape == ()) # we should have contracted out the entire state
-
-    net_prob = state.numpy()**2
-    net_val = net_norm * state.numpy()
-    return net_val, net_prob, max_qubits_mem, max_qubits_op
+    net_prob = state.numpy()**2 # probability of finding zero state
+    return net_prob, log_net_norm, max_qubits_mem, max_qubits_op
 
 # classical backend to quantum_contraction
 # accepts both a TensorNetwork object and a bubbler as input
@@ -156,7 +155,7 @@ def classical_contraction(net, bubbler, tf_dtype = tf.float64):
 
     max_qubits_mem = 0
     max_qubits_op = 0
-    net_norm = 1
+    log_net_norm = 0
 
     eaten_nodes = set()
     dangling_edges = []
@@ -182,7 +181,7 @@ def classical_contraction(net, bubbler, tf_dtype = tf.float64):
         op_tensor = tf.transpose(node.get_tensor(), out_op_idx + inp_op_idx)
         op_matrix = tf.reshape(op_tensor, (2**out_num, 2**inp_num))
         vals_D, _, _ = tf.svd(op_matrix)
-        net_norm *= vals_D.numpy().max()
+        log_net_norm += np.log(vals_D.numpy().max())
 
         # add to our list of "eaten" nodes, update the list of dangling edges
         eaten_nodes.add(node)
@@ -192,7 +191,7 @@ def classical_contraction(net, bubbler, tf_dtype = tf.float64):
 
     # compute value of network
     tn.contractors.naive(net)
-    net_val = net.get_final_node().tensor.numpy()
+    log_net_val = np.log(net.get_final_node().tensor.numpy())
 
-    net_prob = ( net_val / net_norm )**2
-    return net_val, net_prob, max_qubits_mem, max_qubits_op
+    net_prob = np.exp(2 * (log_net_val - log_net_norm))
+    return net_prob, log_net_norm, max_qubits_mem, max_qubits_op

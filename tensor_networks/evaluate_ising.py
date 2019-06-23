@@ -63,29 +63,36 @@ def make_net(inv_temp, lattice_shape):
 # compute various quantities and plot them
 ##########################################################################################
 
-steps = 50
-max_inv_temp = 2
-lattice_shape = (5,5)
+steps = 51
+max_inv_temp_val = 5
+lattice_shape = (4,4)
 figsize = (4,3)
 
 inv_temp_crit = np.log(1+np.sqrt(2)) / 2
 
-inv_temps = np.linspace(0, max_inv_temp, steps)
-vals_Z = np.zeros(steps)
+inv_temps = np.linspace(0, max_inv_temp_val, steps) * inv_temp_crit
+log_Z = np.zeros(steps)
 probs = np.zeros(steps)
-norms = np.zeros(steps)
+log_norms = np.zeros(steps)
 for jj in range(steps):
     net, nodes, _ = make_net(inv_temps[jj], lattice_shape)
     bubbler = nodes.values()
-    vals_Z[jj], probs[jj], qubits_mem, qubits_op = classical_contraction(net, bubbler)
-    norms[jj] = vals_Z[jj] / np.sqrt(probs[jj])
+    probs[jj], log_norms[jj], qubits_mem, qubits_op = classical_contraction(net, bubbler)
+    log_Z[jj] = log_norms[jj] + 1/2 * np.log(probs[jj])
 
 print("qubits (mem, op):", qubits_mem, qubits_op)
+
+# set fonts and use latex packages
+params = { "font.family" : "sans-serif",
+           "font.serif" : "Computer Modern",
+           "text.usetex" : True,
+           "text.latex.preamble" : r"\usepackage{amsmath}" }
+plt.rcParams.update(params)
 
 # log(Z) / V
 plt.figure(figsize = figsize)
 plt.title(f"lattice size: {lattice_shape}")
-plt.plot(inv_temps, np.log(vals_Z) / np.prod(lattice_shape), "k.")
+plt.plot(inv_temps, log_Z / np.prod(lattice_shape), "k.")
 plt.axvline(inv_temp_crit, color = "gray", linestyle = "--", linewidth = 1)
 plt.xlim(0, inv_temps.max())
 plt.ylim(0, plt.gca().get_ylim()[1])
@@ -96,11 +103,11 @@ plt.tight_layout()
 # "norm" of the network
 plt.figure(figsize = figsize)
 plt.title(f"lattice size: {lattice_shape}")
-plt.semilogy(inv_temps, norms, "k.")
+plt.semilogy(inv_temps, np.exp(log_norms), "k.")
 plt.axvline(inv_temp_crit, color = "gray", linestyle = "--", linewidth = 1)
 plt.xlim(0, inv_temps.max())
 plt.xlabel(r"$J/T$")
-plt.ylabel("network norm")
+plt.ylabel(r"$\prod_j \left\Vert \mathcal{O}_j \right\Vert$")
 plt.tight_layout()
 
 # probability of "acceptance" -- finding all ancillas in |0>
