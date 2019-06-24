@@ -45,9 +45,9 @@ def quantum_contraction(bubbler, print_status = False, tf_dtype = tf.float64):
     zero_state = lambda qubits : idx_state(0, qubits, tf_dtype)
     tf_eye = tf.eye(2, dtype = tf_dtype)
     tf_iY = tf.constant([[0,1],[-1,0]], dtype = tf_dtype)
+    net_size = len(bubbler)
 
-    max_qubits_mem = 0
-    max_qubits_op = 0
+    max_qubits = 0
     log_net_norm = 0
     state = zero_state(0)
 
@@ -66,12 +66,9 @@ def quantum_contraction(bubbler, print_status = False, tf_dtype = tf.float64):
         aux_num = len(aux_edges) # number of auxiliary (bystander) qubits
         assert(aux_num == len(state.shape) - inp_num) # sanity check
 
-        # number of qubits required for this step,
-        # and the number of qubits the current unitarized swallowing operators acts on
-        node_qubits_mem = aux_num + act_num + 1
-        node_qubits_op = act_num + 1
-        max_qubits_mem = max(max_qubits_mem, node_qubits_mem)
-        max_qubits_op = max(max_qubits_op, node_qubits_op)
+        # update max_qubits, given the number of qubits required for this step
+        if node_idx != 0 and node_idx != net_size-1:
+            max_qubits = max(max_qubits, aux_num + act_num + 1)
 
         # if we gain qubits upon swallowing this tensor,
         # then we need "extra" qubits for the unitarized tensor to act on
@@ -97,18 +94,18 @@ def quantum_contraction(bubbler, print_status = False, tf_dtype = tf.float64):
         op_matrix = tf.reshape(op_tensor, (2**act_num,)*2)
         vals_D, op_V_L, op_V_R = tf.linalg.svd(op_matrix)
 
-        # rotate into the diagonal basis of D
-        state = tf.reshape(state, (2**act_num,) + (2,)*(len(state.shape)-act_num))
-        state = tf.tensordot(tf.transpose(op_V_R, conjugate = True), state, axes = [[1],[0]])
-
         # normalize D by its operator norm, keeping track of the norm independently
         norm_D = max(vals_D.numpy())
         normed_vals_D = vals_D/norm_D
         log_net_norm += np.log(norm_D)
 
+        # rotate into the diagonal basis of D
+        state = tf.reshape(state, (2**act_num,) + (2,)*(len(state.shape)-act_num))
+        state = tf.tensordot(tf.transpose(op_V_R, conjugate = True), state, axes = [[1],[0]])
+
         # construct the unitary action of D
-        op_U_D = tf.tensordot(tf_eye, tf.diag(normed_vals_D), axes = 0) \
-               + tf.tensordot(tf_iY, tf.diag(tf.sqrt(1-normed_vals_D**2)), axes = 0)
+        op_U_D = tf.tensordot(tf_eye, tf.linalg.diag(normed_vals_D), axes = 0) \
+               + tf.tensordot(tf_iY, tf.linalg.diag(tf.sqrt(1-normed_vals_D**2)), axes = 0)
 
         # attach ancilla, act on the state by the unitary U_D, and remove (project out) the ancilla
         state = tf.tensordot(zero_state(1), state, axes = 0)
@@ -134,32 +131,31 @@ def quantum_contraction(bubbler, print_status = False, tf_dtype = tf.float64):
             # the node we just swallowed
             print("node:", node_idx, node)
 
-            # the number of memory qubits,
-            # and the number of qubits the unitary swallowing operator acts on
-            print("qubits (mem, op):", node_qubits_mem, node_qubits_op)
+            # number of qubits required for this step
+            print("qubits:", aux_num + act_num + 1)
 
             # the norm of the state after swallowing this node and projecting out ancillas
             state_norm = tf.tensordot(tf.transpose(state, conjugate = True), state,
-                                  axes = [ list(range(len(state.shape))) ]*2).numpy()
+                                      axes = [ list(range(len(state.shape))) ]*2).numpy()
             print("norm:", state_norm)
             print("-"*10)
 
     assert(state.shape == ()) # we should have contracted out the entire state
     net_prob = state.numpy()**2 # probability of finding zero state
-    return net_prob, log_net_norm, max_qubits_mem, max_qubits_op
+    return net_prob, log_net_norm, max_qubits
 
 # classical backend to quantum_contraction
 # accepts both a TensorNetwork object and a bubbler as input
 # same outputs as quantum_contraction
 def classical_contraction(net, bubbler, tf_dtype = tf.float64):
+    net_size = len(bubbler)
 
-    max_qubits_mem = 0
-    max_qubits_op = 0
+    max_qubits = 0
     log_net_norm = 0
 
     eaten_nodes = set()
     dangling_edges = []
-    for node in bubbler:
+    for node_idx, node in enumerate(bubbler):
         inp_edges, inp_op_idx, out_edges, out_op_idx = get_edge_info(node, eaten_nodes)
 
         # identify auxiliary dangling edges that do not participate in swallowing this node
@@ -170,12 +166,9 @@ def classical_contraction(net, bubbler, tf_dtype = tf.float64):
         act_num = max(inp_num, out_num) # number of qubits the swallowing operator acts on
         aux_num = len(aux_edges) # number of auxiliary (bystander) qubits
 
-        # number of qubits required for this step,
-        # and the number of qubits the current unitarized swallowing operators acts on
-        node_qubits_mem = aux_num + act_num + 1
-        node_qubits_op = act_num + 1
-        max_qubits_mem = max(max_qubits_mem, node_qubits_mem)
-        max_qubits_op = max(max_qubits_op, node_qubits_op)
+        # update max_qubits, given the number of qubits required for this step
+        if node_idx != 0 and node_idx != net_size-1:
+            max_qubits = max(max_qubits, aux_num + act_num + 1)
 
         # get the tensor associated with this node, reordering axes as necessary
         op_tensor = tf.transpose(node.get_tensor(), out_op_idx + inp_op_idx)
@@ -194,4 +187,4 @@ def classical_contraction(net, bubbler, tf_dtype = tf.float64):
     log_net_val = np.log(net.get_final_node().tensor.numpy())
 
     net_prob = np.exp(2 * (log_net_val - log_net_norm))
-    return net_prob, log_net_norm, max_qubits_mem, max_qubits_op
+    return net_prob, log_net_norm, max_qubits

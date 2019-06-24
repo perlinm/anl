@@ -64,13 +64,14 @@ def make_net(inv_temp, lattice_shape):
 ##########################################################################################
 
 # set fonts and use latex packages
-params = { "font.family" : "sans-serif",
-           "font.serif" : "Computer Modern",
+params = { "font.family" : "serif",
+           "font.sans-serif" : "Computer Modern",
+           "font.size" : 12,
            "text.usetex" : True,
            "text.latex.preamble" : r"\usepackage{amsmath}" }
 plt.rcParams.update(params)
 
-figsize = (4,3)
+figsize = (5,4)
 max_inv_temp_val = 3
 steps = 51
 sizes = range(2,7)
@@ -88,10 +89,11 @@ for size in sizes:
     for jj in range(steps):
         net, nodes, _ = make_net(inv_temps[jj], lattice_shape)
         bubbler = nodes.values()
-        probs[jj], log_norms[jj], qubits_mem, qubits_op = classical_contraction(net, bubbler)
+        probs[jj], log_norms[jj], max_qubits = classical_contraction(net, bubbler)
+        # probs[jj], log_norms[jj], max_qubits = quantum_contraction(bubbler)
         log_Z[jj] = log_norms[jj] + 1/2 * np.log(probs[jj])
 
-    print("size, mem qubits, op qubits:", size, qubits_mem, qubits_op)
+    print(f"size, qubits: {size}, {max_qubits}")
 
     # partition function
     plt.figure("log_Z", figsize = figsize)
