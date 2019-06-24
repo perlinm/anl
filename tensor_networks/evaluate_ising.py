@@ -6,7 +6,7 @@ np.set_printoptions(linewidth = 200)
 
 import tensorflow as tf
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
-tf.enable_v2_behavior()
+tf.compat.v1.enable_v2_behavior()
 import tensornetwork as tn
 
 import matplotlib.pyplot as plt
@@ -63,25 +63,6 @@ def make_net(inv_temp, lattice_shape):
 # compute various quantities and plot them
 ##########################################################################################
 
-steps = 51
-max_inv_temp_val = 5
-lattice_shape = (4,4)
-figsize = (4,3)
-
-inv_temp_crit = np.log(1+np.sqrt(2)) / 2
-
-inv_temps = np.linspace(0, max_inv_temp_val, steps) * inv_temp_crit
-log_Z = np.zeros(steps)
-probs = np.zeros(steps)
-log_norms = np.zeros(steps)
-for jj in range(steps):
-    net, nodes, _ = make_net(inv_temps[jj], lattice_shape)
-    bubbler = nodes.values()
-    probs[jj], log_norms[jj], qubits_mem, qubits_op = classical_contraction(net, bubbler)
-    log_Z[jj] = log_norms[jj] + 1/2 * np.log(probs[jj])
-
-print("qubits (mem, op):", qubits_mem, qubits_op)
-
 # set fonts and use latex packages
 params = { "font.family" : "sans-serif",
            "font.serif" : "Computer Modern",
@@ -89,35 +70,63 @@ params = { "font.family" : "sans-serif",
            "text.latex.preamble" : r"\usepackage{amsmath}" }
 plt.rcParams.update(params)
 
-# log(Z) / V
-plt.figure(figsize = figsize)
-plt.title(f"lattice size: {lattice_shape}")
-plt.plot(inv_temps, log_Z / np.prod(lattice_shape), "k.")
-plt.axvline(inv_temp_crit, color = "gray", linestyle = "--", linewidth = 1)
-plt.xlim(0, inv_temps.max())
-plt.ylim(0, plt.gca().get_ylim()[1])
-plt.xlabel(r"$J/T$")
-plt.ylabel(r"$\log(Z)/V$")
-plt.tight_layout()
+figsize = (4,3)
+max_inv_temp_val = 3
+steps = 51
+sizes = range(2,7)
 
-# "norm" of the network
-plt.figure(figsize = figsize)
-plt.title(f"lattice size: {lattice_shape}")
-plt.semilogy(inv_temps, np.exp(log_norms), "k.")
-plt.axvline(inv_temp_crit, color = "gray", linestyle = "--", linewidth = 1)
-plt.xlim(0, inv_temps.max())
-plt.xlabel(r"$J/T$")
-plt.ylabel(r"$\prod_j \left\Vert \mathcal{O}_j \right\Vert$")
-plt.tight_layout()
+inv_temp_crit = np.log(1+np.sqrt(2)) / 2
+inv_temps = np.linspace(0, max_inv_temp_val, steps) * inv_temp_crit
 
-# probability of "acceptance" -- finding all ancillas in |0>
-plt.figure(figsize = figsize)
-plt.title(f"lattice size: {lattice_shape}")
-plt.semilogy(inv_temps, probs, "k.")
-plt.axvline(inv_temp_crit, color = "gray", linestyle = "--", linewidth = 1)
-plt.xlim(0, inv_temps.max())
-plt.xlabel(r"$J/T$")
-plt.ylabel("acceptance probability")
-plt.tight_layout()
+for size in sizes:
+    lattice_shape = (size, size)
+    volume = np.prod(lattice_shape)
+
+    log_Z = np.zeros(steps)
+    probs = np.zeros(steps)
+    log_norms = np.zeros(steps)
+    for jj in range(steps):
+        net, nodes, _ = make_net(inv_temps[jj], lattice_shape)
+        bubbler = nodes.values()
+        probs[jj], log_norms[jj], qubits_mem, qubits_op = classical_contraction(net, bubbler)
+        log_Z[jj] = log_norms[jj] + 1/2 * np.log(probs[jj])
+
+    print("size, mem qubits, op qubits:", size, qubits_mem, qubits_op)
+
+    # partition function
+    plt.figure("log_Z", figsize = figsize)
+    plt.title(r"lattice size: $N\times N$")
+    plt.plot(inv_temps / inv_temp_crit, log_Z / volume, ".", label = f"$N={size}$")
+    plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
+    plt.xlim(0, inv_temps.max() / inv_temp_crit)
+    plt.ylim(0, plt.gca().get_ylim()[-1])
+    plt.xlabel(r"$\beta / \beta_{\mathrm{crit}}$")
+    plt.ylabel(r"$\log Z/V$")
+    plt.legend(framealpha = 1)
+    plt.tight_layout()
+
+    # "norm" of the network
+    plt.figure("log_norms", figsize = figsize)
+    plt.title(r"lattice size: $N\times N$")
+    plt.plot(inv_temps / inv_temp_crit, log_norms / volume,
+             ".", label = f"$N={size}$")
+    plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
+    plt.xlim(0, inv_temps.max() / inv_temp_crit)
+    plt.ylim(0, plt.gca().get_ylim()[-1])
+    plt.xlabel(r"$\beta / \beta_{\mathrm{crit}}$")
+    plt.ylabel(r"$\log \left(\prod_j \left\Vert \mathcal{O}_j \right\Vert\right) / V$")
+    plt.legend(framealpha = 1)
+    plt.tight_layout()
+
+    # probability of "acceptance" -- finding all ancillas in |0>
+    plt.figure("prob", figsize = figsize)
+    plt.title(r"lattice size: $N\times N$")
+    plt.semilogy(inv_temps / inv_temp_crit, probs, ".", label = f"$N={size}$")
+    plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
+    plt.xlim(0, inv_temps.max() / inv_temp_crit)
+    plt.xlabel(r"$\beta / \beta_{\mathrm{crit}}$")
+    plt.ylabel("acceptance probability")
+    plt.legend(framealpha = 1)
+    plt.tight_layout()
 
 plt.show()

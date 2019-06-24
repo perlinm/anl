@@ -5,7 +5,7 @@ import numpy as np
 
 import tensorflow as tf
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
-tf.enable_v2_behavior()
+tf.compat.v1.enable_v2_behavior()
 import tensornetwork as tn
 
 # return a pure state of given number of qubits
@@ -95,7 +95,7 @@ def quantum_contraction(bubbler, print_status = False, tf_dtype = tf.float64):
         # perform singular-value decomposition (SVD) of op_tensor as T = V_L @ D @ V_R^\dag,
         # where V_L, V_R are unitary; and D is diagonal and positive semi-definite
         op_matrix = tf.reshape(op_tensor, (2**act_num,)*2)
-        vals_D, op_V_L, op_V_R = tf.svd(op_matrix)
+        vals_D, op_V_L, op_V_R = tf.linalg.svd(op_matrix)
 
         # rotate into the diagonal basis of D
         state = tf.reshape(state, (2**act_num,) + (2,)*(len(state.shape)-act_num))
@@ -180,7 +180,7 @@ def classical_contraction(net, bubbler, tf_dtype = tf.float64):
         # get the tensor associated with this node, reordering axes as necessary
         op_tensor = tf.transpose(node.get_tensor(), out_op_idx + inp_op_idx)
         op_matrix = tf.reshape(op_tensor, (2**out_num, 2**inp_num))
-        vals_D, _, _ = tf.svd(op_matrix)
+        vals_D, _, _ = tf.linalg.svd(op_matrix)
         log_net_norm += np.log(vals_D.numpy().max())
 
         # add to our list of "eaten" nodes, update the list of dangling edges
