@@ -5,7 +5,7 @@ import qiskit as qs
 import copy
 
 ##########################################################################################
-# this script demonstrates "automatic" cutting of a quantum circuit in qiskit
+# this script cuts a quantum circuit built in qiskit
 # cutting is performed using method described in arxiv.org/abs/1904.00102
 # developed using qiskit version 0.8.1
 ##########################################################################################
@@ -221,36 +221,3 @@ def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
     subcircuits = [ qs.converters.dag_to_circuit(graph)
                     for graph in trimmed_subgraphs ]
     return subcircuits, subcircuit_wiring, subgraph_stitches
-
-##########################################################################################
-
-# construct a circuit that makes two bell pairs
-qubits = qs.QuantumRegister(3, "q")
-circ = qs.QuantumCircuit(qubits)
-circ.h(qubits[0])
-circ.cx(qubits[0], qubits[1])
-circ.cx(qubits[1], qubits[2])
-circ.barrier()
-for qubit in qubits:
-    circ.u0(qubit[1], qubit)
-
-print("original circuit:")
-print(circ)
-
-subcircs, subcirc_wiring, subcirc_stitches = cut_circuit(circ, (qubits[1],1))
-
-print()
-for jj, subcirc in enumerate(subcircs):
-    print("subcircuit index:", jj)
-    print(subcirc)
-    print("--------------------")
-
-print()
-print("subcircuit wiring:")
-for old_wire, new_wire in subcirc_wiring.items():
-    print(old_wire, "-->", *new_wire)
-
-print()
-print("subcircuit stitches:")
-for old_wire, new_wire in subcirc_stitches.items():
-    print(*old_wire, "-->", *new_wire)
