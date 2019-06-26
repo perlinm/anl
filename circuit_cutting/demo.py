@@ -9,14 +9,20 @@ from functools import reduce
 from circuit_cutter import cut_circuit
 from fragment_simulator import get_circuit_distribution, get_fragment_distribution
 
-qreg = qs.QuantumRegister(3, "q")
+qreg = qs.QuantumRegister(4, "q")
 circ = qs.QuantumCircuit(qreg)
 circ.h(qreg[0])
 circ.cx(qreg[0], qreg[1])
 circ.cx(qreg[1], qreg[2])
-circ.x(qreg[1])
+circ.cx(qreg[2], qreg[3])
 
-fragments, frag_wiring, frag_stitches = cut_circuit(circ, (qreg[1],1))
+circ.barrier()
+circ.x(qreg[3])
+circ.barrier()
+for idx, qubit in enumerate(qreg):
+    circ.u0(idx, qubit)
+
+fragments, frag_wiring, frag_stitches = cut_circuit(circ, (qreg[1],1), (qreg[2],1))
 
 print("original circuit:")
 print(circ)
@@ -95,7 +101,6 @@ def simulate_and_combine(fragments, frag_wiring, frag_stitches, wire_order):
 
         combined_dist += scalar_factor * reduce(np.multiply.outer, dist_factors[::-1])
 
-
     combined_wires = [ ( frag_idx, qubit ) for frag_idx, fragment in enumerate(fragments)
                        for qubit in fragment.qubits
                        if ( frag_idx, qubit ) not in frag_stitches.keys() ]
@@ -103,7 +108,7 @@ def simulate_and_combine(fragments, frag_wiring, frag_stitches, wire_order):
     terminal_wire_map = original_wires(wire_order, frag_wiring, frag_stitches)
     current_wire_order = [ terminal_wire_map[wire] for wire in combined_wires ]
     wire_permutation = [ current_wire_order.index(wire) for wire in wire_order ]
-    axis_permutation = [ len(wire_order) - 1 - index for index in wire_permutation ]
+    axis_permutation = [ len(wire_order) - 1 - idx for idx in wire_permutation ][::-1]
 
     return combined_dist.transpose(*axis_permutation)
 
@@ -111,7 +116,7 @@ def simulate_and_combine(fragments, frag_wiring, frag_stitches, wire_order):
 def distribution_fidelity(dist_0, dist_1):
     fidelity = 0
     for idx in np.ndindex(dist_0.shape):
-        fidelity += np.sqrt(dist_0[idx] * dist_1[idx])
+        fidelity += np.sqrt(abs(dist_0[idx] * dist_1[idx]))
     return fidelity
 
 
