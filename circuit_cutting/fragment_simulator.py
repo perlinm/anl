@@ -47,10 +47,10 @@ frag_exit_apnds = [ ( "Z", [ gates.IdGate() ] ),
 # accepts a list of fragments, and lists of wires (i.e. in that fragment) that are
 #   respectively "initialization" wires (on which to prepare states)
 #   and "exit wires" (on which to make measurements)
-# returns a conditional distribution function in dictionary format:
+# returns an (unnormalized) conditional distribution function in dictionary format:
 # { ( set( ( < initialized wire >, < initialized state >   ) ),
 #     set( ( < measured wire >,    < measurement outcome > ) ) :
-#   < measurement outcome distribution function, projected onto the exit-wire outcomes > }
+#   < non-exit-wire measurement outcomes, conditional on the exit-wire outcomes > }
 def get_fragment_distribution(fragment, init_wires = None, exit_wires = None):
     if init_wires: # if we have wires to initialize into various states
 
@@ -77,13 +77,17 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None):
 
     if exit_wires: # if we have wires to measure in various bases
 
+        # sort exit wires by index to ensure proper deletion of axes
+        #   for example, if we wish to delete axes 0 and 3,
+        #   then we need to delete axis 3 before deleting axis 0,
+        #   as otherwise the bit at axis 3 will change position
+        exit_wires = sorted(exit_wires, key = lambda wire : fragment.qubits.index(wire) )
+
         # pick the first exit wire for measurement
         exit_wire, other_wires = exit_wires[0], exit_wires[1:]
 
-        # axis to delete when projecting the distribution function (stored as a numpy array),
-        #   and the shape of the final distribution function
-        del_axis = len(fragment.qubits) - 1 - fragment.qubits.index(exit_wire)
-        new_dist_shape = (2,)*(len(fragment.qubits)-1)
+        # determine axis to delete to get a conditional distribution function
+        del_axis = -fragment.qubits.index(exit_wire)-1
 
         frag_dist = {} # distribution function we will return
         for measurement, append_op in frag_exit_apnds: # for each measurement basis
@@ -91,7 +95,7 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None):
             # construct the circuit to measure in the right basis
             apnd_circuit = act_gates(fragment, append_op, exit_wire)
 
-            # get the distribution function for each measurement
+            # get the conditional distribution function for each measurement
             exit_frag_dist = get_fragment_distribution(fragment + apnd_circuit,
                                                        init_wires, other_wires)
 
@@ -101,7 +105,7 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None):
                 for outcome, bit_state in [ ( "+", 0 ), ( "-", 1 ) ]:
                     new_exit_keys = exit_keys.union({ ( exit_wire, outcome + measurement ) })
                     new_dist = np.delete(dist, 1-bit_state, axis = del_axis)
-                    new_dist = np.reshape(new_dist, new_dist_shape)
+                    new_dist = np.reshape(new_dist, dist.shape[:-1])
                     frag_dist[init_keys, new_exit_keys] = new_dist
 
         return frag_dist

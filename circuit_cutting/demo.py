@@ -35,14 +35,13 @@ for jj, fragment in enumerate(fragments):
 
 print()
 print("fragment wiring:")
-for old_wire, new_wire in frag_wiring.items():
+for old_wire, new_wire in sorted(frag_wiring.items()):
     print(old_wire, "-->", *new_wire)
 
 print()
 print("fragment stitches:")
-for old_wire, new_wire in frag_stitches.items():
+for old_wire, new_wire in sorted(frag_stitches.items()):
     print(*old_wire, "-->", *new_wire)
-
 
 # convert a distribution vector to a dictionary taking bistrings to values
 # note that the *first* bit in the bitstring corresponds to the *last* bit in a register
@@ -70,6 +69,7 @@ def original_wires(original_wires, fragment_wiring, fragment_stitches):
         wire_map[frag_wire] = original_wire
     return wire_map
 
+# all allowed assignments of measurement outcomes and states to the ends of a stitch
 stitch_assigments = [ ("+Z",)*2, ("-Z",)*2 ] + [ ( dir_M + op, dir_S + op)
                                                  for op in [ "X", "Y" ]
                                                  for dir_M in [ "+", "-" ]
