@@ -15,7 +15,7 @@ def empty_circuit(circuit):
 # act with the given gates acting on the given qubits
 def act_gates(circuit, gates, *qubits):
     new_circuit = empty_circuit(circuit)
-    for gate in gates[::-1]:
+    for gate in gates:
         new_circuit.append(gate, qargs = list(qubits))
     return new_circuit
 
@@ -39,7 +39,7 @@ frag_init_preps = [ ( "+Z", [ ] ),
                     ( "-X", [ gates.XGate(), gates.HGate() ] ),
                     ( "+Y", [ gates.HGate(), gates.SGate() ] ),
                     ( "-Y", [ gates.XGate(), gates.HGate(), gates.SGate() ] ) ]
-frag_exit_apnds = [ ( "Z", [ gates.IdGate() ] ),
+frag_exit_apnds = [ ( "Z", [ ] ),
                     ( "X", [ gates.HGate() ] ),
                     ( "Y", [ gates.SGate().inverse(), gates.HGate() ] ) ]
 

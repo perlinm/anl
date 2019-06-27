@@ -9,20 +9,23 @@ from functools import reduce
 from circuit_cutter import cut_circuit
 from fragment_simulator import get_circuit_distribution, get_fragment_distribution
 
-qreg = qs.QuantumRegister(4, "q")
+##########################################################################################
+# construct circuit of random local 2-qubit gates that we can cut
+
+qubits = 5
+layers = 2
+
+qreg = qs.QuantumRegister(qubits, "q")
 circ = qs.QuantumCircuit(qreg)
-circ.h(qreg[0])
-circ.cx(qreg[0], qreg[1])
-circ.cx(qreg[1], qreg[2])
-circ.cx(qreg[2], qreg[3])
 
-circ.barrier()
-circ.x(qreg[3])
-circ.barrier()
-for idx, qubit in enumerate(qreg):
-    circ.u0(idx, qubit)
+for layer in range(layers):
+    for odd_links in range(2):
+        for jj in range(odd_links, qubits-1, 2):
+            random_gate = qs.quantum_info.random.utils.random_unitary(4)
+            circ.append(random_gate, [ qreg[jj], qreg[jj+1] ])
 
-fragments, frag_wiring, frag_stitches = cut_circuit(circ, (qreg[1],1), (qreg[2],1))
+cuts = [ (qreg[qubits//2], op) for op in range(1,2*layers) ]
+fragments, frag_wiring, frag_stitches = cut_circuit(circ, *cuts)
 
 print("original circuit:")
 print(circ)
@@ -42,6 +45,8 @@ print()
 print("fragment stitches:")
 for old_wire, new_wire in sorted(frag_stitches.items()):
     print(*old_wire, "-->", *new_wire)
+
+##########################################################################################
 
 # convert a distribution vector to a dictionary taking bistrings to values
 # note that the *first* bit in the bitstring corresponds to the *last* bit in a register
@@ -112,7 +117,6 @@ def simulate_and_combine(fragments, frag_wiring, frag_stitches, wire_order):
 
     return combined_dist.transpose(*axis_permutation)
 
-
 def distribution_fidelity(dist_0, dist_1):
     fidelity = 0
     for idx in np.ndindex(dist_0.shape):
@@ -136,4 +140,4 @@ for key, val in dist_vec_to_dict(combined_dist).items():
     print(key, val)
 
 print()
-print("distribution fidelity:", distribution_fidelity(circ_dist, combined_dist))
+print("inter-distribution fidelity:", distribution_fidelity(circ_dist, combined_dist))
