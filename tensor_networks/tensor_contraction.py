@@ -140,7 +140,7 @@ def quantum_contraction(bubbler, print_status = False, tf_dtype = tf.float64):
             print("norm:", state_norm)
             print("-"*10)
 
-    assert(state.shape == ()) # we should have contracted out the entire state
+    assert(state.shape == ()) # we should have contracted the entire state to a single number
     net_prob = state.numpy()**2 # probability of finding zero state
     return net_prob, log_net_norm, max_qubits
 
