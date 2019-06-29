@@ -15,7 +15,7 @@ from tensor_contraction import quantum_contraction, classical_contraction
 ##########################################################################################
 # methods for constructing a tensor network that represents the partition function
 #   of a uniform 2-D Ising model on a periodic square lattice
-# hamiltonian: H = -\sum_{<j,k>} s_j s_k + h \sum_j s_j
+# hamiltonian: H = -\sum_{<j,k>} s_j s_k - h \sum_j s_j
 ##########################################################################################
 
 # compute a "bare" vertex tensor element
@@ -90,31 +90,51 @@ params = { "font.family" : "serif",
            "font.sans-serif" : "Computer Modern",
            "font.size" : font_size,
            "text.usetex" : True,
-           "text.latex.preamble" : r"\usepackage{amsmath}" }
+           "text.latex.preamble" : [ r"\usepackage{amsmath}",
+                                     r"\usepackage{braket}" ]}
 plt.rcParams.update(params)
 
-steps = 51
+steps = 101
+small_value = 1e-6
 max_inv_temp_val = 3
 sizes = range(3,7)
 
 inv_temp_crit = np.log(1+np.sqrt(2)) / 2
 inv_temps = np.linspace(0, max_inv_temp_val, steps) * inv_temp_crit
 
+log_Z = np.zeros(steps)
+probs = np.zeros(steps)
+log_norms = np.zeros(steps)
+sqr_M = np.zeros(steps)
 for size in sizes:
     lattice_shape = (size, size)
     volume = np.prod(lattice_shape)
 
-    log_Z = np.zeros(steps)
-    probs = np.zeros(steps)
-    log_norms = np.zeros(steps)
     for jj in range(steps):
         net, nodes, _ = make_net(inv_temps[jj], 0, lattice_shape)
-        bubbler = nodes.values()
-        probs[jj], log_norms[jj], max_qubits = classical_contraction(net, bubbler)
-        # probs[jj], log_norms[jj], max_qubits = quantum_contraction(bubbler)
+        probs[jj], log_norms[jj], max_qubits = classical_contraction(net, nodes.values())
+        # probs[jj], log_norms[jj], max_qubits = quantum_contraction(nodes.values())
         log_Z[jj] = log_norms[jj] + 1/2 * np.log(probs[jj])
 
+        if inv_temps[jj] == 0: continue
+
+        net, nodes, _ = make_net(inv_temps[jj], small_value, lattice_shape)
+        prob, log_norm, _ = classical_contraction(net, nodes.values())
+        log_Z_small_field = log_norm + 1/2 * np.log(prob)
+        sqr_M[jj] = 2 * ( log_Z_small_field - log_Z[jj] ) / small_value**2 / inv_temps[jj]**2
+
     print(f"size, qubits: {size}, {max_qubits}")
+
+    # probability of "acceptance" -- finding all ancillas in |0>
+    plt.figure("prob", figsize = figsize)
+    plt.title(r"lattice size: $N\times N$")
+    plt.semilogy(inv_temps / inv_temp_crit, probs, ".", label = f"$N={size}$")
+    plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
+    plt.xlim(*tuple(inv_temps[[0,-1]]/inv_temp_crit))
+    plt.xlabel(r"$\beta / \beta_{\mathrm{crit}}$")
+    plt.ylabel("acceptance probability")
+    plt.legend(framealpha = 1)
+    plt.tight_layout()
 
     # partition function
     plt.figure("log_Z", figsize = figsize)
@@ -128,27 +148,27 @@ for size in sizes:
     plt.legend(framealpha = 1)
     plt.tight_layout()
 
-    # "norm" of the network
-    plt.figure("log_norms", figsize = figsize)
+    # energy density
+    mid_inv_temps = ( inv_temps[1:] + inv_temps[:-1] ) / 2
+    energy = - ( log_Z[1:] - log_Z[:-1] ) / ( inv_temps[1:] - inv_temps[:-1] )
+    plt.figure("energy", figsize = figsize)
     plt.title(r"lattice size: $N\times N$")
-    plt.plot(inv_temps / inv_temp_crit, log_norms / volume,
-                 ".", label = f"$N={size}$")
+    plt.plot(mid_inv_temps / inv_temp_crit, energy / volume, ".", label = f"$N={size}$")
     plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
     plt.xlim(*tuple(inv_temps[[0,-1]]/inv_temp_crit))
-    plt.ylim(0, plt.gca().get_ylim()[-1])
     plt.xlabel(r"$\beta / \beta_{\mathrm{crit}}$")
-    plt.ylabel(r"$\log \left(\prod_j \left\Vert \mathcal{O}_j \right\Vert\right) / V$")
+    plt.ylabel(r"$\Braket{E}/V$")
     plt.legend(framealpha = 1)
     plt.tight_layout()
 
-    # probability of "acceptance" -- finding all ancillas in |0>
-    plt.figure("prob", figsize = figsize)
+    # squared magnetization density
+    plt.figure("mag", figsize = figsize)
     plt.title(r"lattice size: $N\times N$")
-    plt.semilogy(inv_temps / inv_temp_crit, probs, ".", label = f"$N={size}$")
+    plt.plot(inv_temps / inv_temp_crit, sqr_M / volume**2, ".", label = f"$N={size}$")
     plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
     plt.xlim(*tuple(inv_temps[[0,-1]]/inv_temp_crit))
     plt.xlabel(r"$\beta / \beta_{\mathrm{crit}}$")
-    plt.ylabel("acceptance probability")
+    plt.ylabel(r"$\Braket{S^2}/V^2$")
     plt.legend(framealpha = 1)
     plt.tight_layout()
 
