@@ -132,11 +132,6 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None):
     distribution = get_circuit_distribution(fragment)
     return { ( frozenset(), frozenset() ) : distribution }
 
-##########################################################################################
-# methods to combine conditional probability distributions from fragments,
-# and reconstruct the probability distribution of a stitched-together circuit
-##########################################################################################
-
 # identify initialization and exit wires for each fragment
 # accepts dictionary of stitches and total number of fragments
 # returns two lists: one for initialization wires and one exit wires
@@ -154,6 +149,22 @@ def sort_init_exit_wires(frag_stitches, num_fragments):
                            if frag_wire[0] == frag_idx ]
                          for frag_idx in range(num_fragments) ])
     return init_wires, exit_wires
+
+# compute conditional probability distributions for all circuit fragments
+# accepts a list of fragments and stitch data
+# returns a list of conditional probability distributions over measurement outcomes
+def get_fragment_distributions(fragments, frag_stitches):
+    # collect lists of initialization / exit wires for all fragments
+    init_wires, exit_wires = sort_init_exit_wires(frag_stitches, len(fragments))
+
+    # compute conditional distributions over measurement outcomes for all fragments
+    return [ get_fragment_distribution(ff, ii, ee)
+             for ff, ii, ee in zip(fragments, init_wires, exit_wires) ]
+
+##########################################################################################
+# methods to combine conditional probability distributions from fragments,
+# and reconstruct the probability distribution of a stitched-together circuit
+##########################################################################################
 
 # return a dictionary mapping fragment output wires to corresponding wires of a circuit
 def frag_wire_map(circuit_wires, fragment_wiring, fragment_stitches):
@@ -185,12 +196,8 @@ stitch_assigments = [ ("+Z",)*2, ("-Z",)*2 ] \
 # return a distribution over measurement outcomes on the stitched-together circuit
 def simulate_and_combine(fragments, frag_stitches,
                          frag_wiring = None, wire_order = None):
-    # collect lists of initialization / exit wires for all fragments
-    init_wires, exit_wires = sort_init_exit_wires(frag_stitches, len(fragments))
-
-    # compute conditional distributions over measurement outcomes for all fragments
-    frag_dists = [ get_fragment_distribution(ff, ii, ee)
-                   for ff, ii, ee in zip(fragments, init_wires, exit_wires) ]
+    # get conditional probability distributions for of all circuit fragments
+    frag_dists = get_fragment_distributions(fragments, frag_stitches)
 
     # identify the order of wires in a combined/reconstructed distribution over outcomes
     combined_wire_order = [ ( frag_idx, qubit )
