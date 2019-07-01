@@ -112,18 +112,19 @@ for size in sizes:
 
     for jj in range(steps):
         net, nodes, _ = make_net(inv_temps[jj], 0, lattice_shape)
-        probs[jj], log_norms[jj], max_qubits = classical_contraction(net, nodes.values())
-        # probs[jj], log_norms[jj], max_qubits = quantum_contraction(nodes.values())
+        probs[jj], log_norms[jj] = classical_contraction(net, nodes.values())
+        # probs[jj], log_norms[jj] = quantum_contraction(nodes.values())
         log_Z[jj] = log_norms[jj] + 1/2 * np.log(probs[jj])
 
         if inv_temps[jj] == 0: continue
 
         net, nodes, _ = make_net(inv_temps[jj], small_value, lattice_shape)
-        prob, log_norm, _ = classical_contraction(net, nodes.values())
+        prob, log_norm = classical_contraction(net, nodes.values())
+        # prob, log_norm = quantum_contraction(nodes.values())
         log_Z_small_field = log_norm + 1/2 * np.log(prob)
         sqr_M[jj] = 2 * ( log_Z_small_field - log_Z[jj] ) / small_value**2 / inv_temps[jj]**2
 
-    print(f"size, qubits: {size}, {max_qubits}")
+    print(f"size: {size}")
 
     # probability of "acceptance" -- finding all ancillas in |0>
     plt.figure("prob", figsize = figsize)
