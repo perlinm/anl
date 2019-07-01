@@ -15,14 +15,16 @@ tf.compat.v1.enable_v2_behavior()
 import tensornetwork as tn
 
 # compute a "bare" vertex tensor element
-def bare_vertex_tensor_val(idx, field_over_temp):
+def bare_vertex_tensor_val(idx, field_over_temp, spin_factor = False):
     if len(set(idx)) != 1: return 0
-    else: return np.exp(field_over_temp * (2*idx[0]-1))
+    else:
+        spin = 2*idx[0] - 1
+        return np.exp(field_over_temp * spin) * ( spin if spin_factor else 1 )
 
 # construct the entire "bare" vertex tensor
-def bare_vertex_tensor(field_over_temp, lattice_dim):
+def bare_vertex_tensor(field_over_temp, lattice_dim, spin_factor = False):
     vertex_shape = (2,2) * lattice_dim
-    tensor_vals = [ bare_vertex_tensor_val(idx, field_over_temp)
+    tensor_vals = [ bare_vertex_tensor_val(idx, field_over_temp, spin_factor)
                     for idx in np.ndindex(vertex_shape) ]
     return tf.reshape(tf.constant(tensor_vals), vertex_shape)
 
@@ -40,27 +42,48 @@ def link_tensor(inv_temp):
 
 # construct the "fused" vertex tensor by contracting the square root of the edge tensor
 #   at each leg of the "bare" vertex tensor
-def fused_vertex_tensor(inv_temp, field, lattice_dim):
+def fused_vertex_tensor(inv_temp, field, lattice_dim, spin_factor = False):
     sqrt_T_L = tf.linalg.sqrtm(link_tensor(inv_temp))
-    T_V = bare_vertex_tensor(field * inv_temp, lattice_dim)
+    T_V = bare_vertex_tensor(field * inv_temp, lattice_dim, spin_factor)
     for axis in range(len(T_V.shape)):
         T_V = tf.tensordot(sqrt_T_L, T_V, axes = [ [1], [axis] ])
     return T_V
 
 # construct tensor network on a periodic primitive hypercubic lattice
-def ising_network(inv_temp, field, lattice_shape):
-    lattice_dim = len(lattice_shape)
+def ising_network(inv_temp, field, lattice_shape, spin_factor_nodes = []):
+    assert( node_idx in np.ndindex(lattice_shape) for node_idx in spin_factor_nodes )
+
+    lattice_dim = len(lattice_shape) # dimension of lattice
     net = tn.TensorNetwork() # initialize empty tensor network
 
-    # build the tensor at each vertex, and normalize it to its maximum value
-    tensor = fused_vertex_tensor(inv_temp, field, lattice_dim)
-    tensor_norm = tf.norm(tensor)
-    normed_tensor = tensor / tensor_norm
+    # build normalized "regular" tensors to put on ordinary vertices of the lattice
+    tensor_reg = fused_vertex_tensor(inv_temp, field, lattice_dim)
+    tensor_norm_reg = tf.norm(tensor_reg)
+    normed_tensor_reg = tensor_reg / tensor_norm_reg
+
+    # build normalized "impurity" tensors to put on the vertices
+    #   specified by spin_factor_nodes
+    tensor_imp = fused_vertex_tensor(inv_temp, field, lattice_dim, spin_factor = True)
+    tensor_norm_imp = tf.norm(tensor_imp)
+    if tensor_norm_imp.numpy() == 0: tensor_norm_imp = 1
+    normed_tensor_imp = tensor_imp / tensor_norm_imp
+
+    # get the tensor at each node, indexed by lattice coordinates
+    def tensor(node_idx):
+        if node_idx not in spin_factor_nodes:
+            return normed_tensor_reg
+        else:
+            return normed_tensor_imp
 
     # make all nodes, indexed by lattice coorinates
-    nodes = { idx : net.add_node(normed_tensor, name = str(idx))
-              for idx in np.ndindex(lattice_shape) }
-    log_val_estimate = len(nodes) * np.log(tensor_norm)
+    nodes = { node_idx : net.add_node(tensor(node_idx), name = str(node_idx))
+              for node_idx in np.ndindex(lattice_shape) }
+
+    # compute the (logarithm of the) factor taken out by normalizing tensors
+    tensors_imp = len(spin_factor_nodes)
+    tensors_reg = np.prod(lattice_shape) - tensors_imp
+    log_net_scale = tensors_reg * np.log(tensor_norm_reg) \
+                  + tensors_imp * np.log(tensor_norm_imp)
 
     # make all edges, indexed by pairs of lattice coordinates
     edges = {}
@@ -81,4 +104,4 @@ def ising_network(inv_temp, field, lattice_shape):
                                       nodes[trgt_idx][trgt_axis],
                                       name = str(edge))
 
-    return net, nodes, edges, log_val_estimate
+    return net, nodes, edges, log_net_scale
