@@ -54,10 +54,15 @@ def vertex_tensor(inv_temp, field):
 def make_net(inv_temp, field, lattice_shape):
     net = tn.TensorNetwork() # initialize empty tensor network
 
-    # make all nodes, indexed by lattice coorinates
+    # build the tensor at each vertex, and normalize it to its maximum value
     tensor = vertex_tensor(inv_temp, field)
-    nodes = { idx : net.add_node(tensor, name = str(idx))
+    tensor_norm = tf.norm(tensor)
+    normed_tensor = tensor / tensor_norm
+
+    # make all nodes, indexed by lattice coorinates
+    nodes = { idx : net.add_node(normed_tensor, name = str(idx))
               for idx in np.ndindex(lattice_shape) }
+    log_val_estimate = len(nodes) * np.log(tensor_norm)
 
     # make all edges, indexed by pairs of lattice coordinates
     edges = {}
@@ -76,7 +81,7 @@ def make_net(inv_temp, field, lattice_shape):
                                       nodes[trgt_idx][trgt_axis],
                                       name = str(edge))
 
-    return net, nodes, edges
+    return net, nodes, edges, log_val_estimate
 
 ##########################################################################################
 # compute various quantities and plot them
@@ -103,7 +108,7 @@ inv_temp_crit = np.log(1+np.sqrt(2)) / 2
 inv_temps = np.linspace(0, max_inv_temp_val, steps) * inv_temp_crit
 
 log_Z = np.zeros(steps)
-probs = np.zeros(steps)
+log_probs = np.zeros(steps)
 log_norms = np.zeros(steps)
 sqr_M = np.zeros(steps)
 for size in sizes:
@@ -111,17 +116,17 @@ for size in sizes:
     volume = np.prod(lattice_shape)
 
     for jj in range(steps):
-        net, nodes, _ = make_net(inv_temps[jj], 0, lattice_shape)
-        probs[jj], log_norms[jj] = classical_contraction(net, nodes.values())
-        # probs[jj], log_norms[jj] = quantum_contraction(nodes.values())
-        log_Z[jj] = log_norms[jj] + 1/2 * np.log(probs[jj])
+        net, nodes, _, log_val_estimate = make_net(inv_temps[jj], 0, lattice_shape)
+        log_probs[jj], log_norms[jj] = classical_contraction(net, nodes.values())
+        # log_probs[jj], log_norms[jj] = quantum_contraction(nodes.values())
+        log_Z[jj] = log_norms[jj] + 1/2 * log_probs[jj] + log_val_estimate
 
         if inv_temps[jj] == 0: continue
 
-        net, nodes, _ = make_net(inv_temps[jj], small_value, lattice_shape)
-        prob, log_norm = classical_contraction(net, nodes.values())
-        # prob, log_norm = quantum_contraction(nodes.values())
-        log_Z_small_field = log_norm + 1/2 * np.log(prob)
+        net, nodes, _, log_val_estimate = make_net(inv_temps[jj], small_value, lattice_shape)
+        log_prob, log_norm = classical_contraction(net, nodes.values())
+        # log_prob, log_norm = quantum_contraction(nodes.values())
+        log_Z_small_field = log_norm + 1/2 * log_prob + log_val_estimate
         sqr_M[jj] = 2 * ( log_Z_small_field - log_Z[jj] ) / small_value**2 / inv_temps[jj]**2
 
     print(f"size: {size}")
@@ -129,7 +134,7 @@ for size in sizes:
     # probability of "acceptance" -- finding all ancillas in |0>
     plt.figure("prob", figsize = figsize)
     plt.title(r"lattice size: $N\times N$")
-    plt.semilogy(inv_temps / inv_temp_crit, probs, ".", label = f"$N={size}$")
+    plt.semilogy(inv_temps / inv_temp_crit, np.exp(log_probs), ".", label = f"$N={size}$")
     plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
     plt.xlim(*tuple(inv_temps[[0,-1]]/inv_temp_crit))
     plt.xlabel(r"$\beta / \beta_{\mathrm{crit}}$")

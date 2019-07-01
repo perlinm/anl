@@ -96,7 +96,7 @@ def remove_qubits(state, del_num):
 # uses the method described in arxiv.org/abs/0805.0040
 # accepts: a list of TensorNetwork nodes in bubbling order
 # returns:
-# (i) the probability of "success", i.e. finding all ancillas in |0>, and
+# (i) the logarithm of the probability of "success", i.e. finding all ancillas in |0>, and
 # (ii) the logarithm of the product of the operator norms of the swallowing operators
 def quantum_contraction(bubbler, print_status = False, dtype = tf.float64):
     tf_Z = tf.constant([[1,0],[0,-1]], dtype = dtype) # Pauli-Z
@@ -188,8 +188,8 @@ def quantum_contraction(bubbler, print_status = False, dtype = tf.float64):
             print("-"*10)
 
     assert(state.shape == ()) # we should have contracted the entire state to a single number
-    net_prob = state.numpy()**2 # probability of finding zero state
-    return net_prob, log_net_norm
+    log_net_prob = 2 * np.log(abs(state.numpy())) # probability of finding zero state
+    return log_net_prob, log_net_norm
 
 # classical backend to quantum_contraction
 # accepts both a TensorNetwork object and a bubbler as input
@@ -209,6 +209,7 @@ def classical_contraction(net, bubbler):
         swallow_tensor = tf.transpose(node.get_tensor(), out_op_idx + inp_op_idx)
         swallow_matrix = tf.reshape(swallow_tensor, (2**out_num, 2**inp_num))
         vals_D, _, _ = tf.linalg.svd(swallow_matrix)
+        norm_D = max(vals_D.numpy())
         log_net_norm += np.log(vals_D.numpy().max())
 
         # add to our list of "eaten" nodes, update the list of dangling edges
@@ -221,5 +222,5 @@ def classical_contraction(net, bubbler):
     tn.contractors.naive(net)
     log_net_val = np.log(net.get_final_node().tensor.numpy())
 
-    net_prob = np.exp(2 * (log_net_val - log_net_norm))
-    return net_prob, log_net_norm
+    log_net_prob = 2 * (log_net_val - log_net_norm)
+    return log_net_prob, log_net_norm
