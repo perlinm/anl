@@ -11,6 +11,37 @@ from functools import reduce
 # and combine fragment simulation results
 ##########################################################################################
 
+# class for a conditional distribution function
+class conditional_distribution:
+    def __init__(self, empty_dist = None):
+        self.dist_dict = {}
+        if empty_dist is not None:
+            self.dist_dict[frozenset(), frozenset()] = empty_dist
+
+    def add(self, init_keys, exit_keys, dist):
+        self.dist_dict[frozenset(init_keys), frozenset(exit_keys)] = dist
+
+    def items(self):
+        return self.dist_dict.items()
+
+    def __getitem__(self, key):
+        measure_ops = frozenset(key[0])
+        state_preps = frozenset(key[1])
+        for wire, op in measure_ops:
+            if op == "I":
+                vacancy = measure_ops.difference({(wire,op)})
+                measure_up = vacancy.union({(wire,"+Z")})
+                measure_dn = vacancy.union({(wire,"-Z")})
+                return self[measure_up, state_preps] + self[measure_dn, state_preps]
+        for wire, op in state_preps:
+            if op == "I":
+                vacancy = state_preps.difference({(wire,op)})
+                state_up = vacancy.union({(wire,"+Z")})
+                state_dn = vacancy.union({(wire,"-Z")})
+                return self[measure_ops, state_up] + self[measure_ops, state_dn]
+
+        return self.dist_dict[measure_ops, state_preps]
+
 ##########################################################################################
 # methods to simulate circuit fragments and collect conditional probability distributions
 # over measurement outcomes
@@ -68,7 +99,8 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None):
         # pick the first init wire for state initialization
         init_wire, other_wires = init_wires[0], init_wires[1:]
 
-        frag_dist = {} # the overall conditional distribution over measurement outcomes
+        # build the overall conditional distribution over measurement outcomes
+        frag_dist = conditional_distribution()
         for state, prepend_op in frag_init_preps: # for each state we will prepare
 
             # construct the circuit to prepare the state we want
@@ -83,7 +115,7 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None):
             for all_keys, dist in init_frag_dist.items():
                 init_keys, exit_keys = all_keys
                 new_init_keys = init_keys.union({ ( init_wire, state ) })
-                frag_dist[new_init_keys, exit_keys] = dist
+                frag_dist.add(new_init_keys, exit_keys, dist)
 
         return frag_dist
 
@@ -103,7 +135,8 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None):
         # on a particular measurement outcome
         del_axis = -fragment.qubits.index(exit_wire)-1
 
-        frag_dist = {} # the overall conditional distribution over measurement outcomes
+        # build the overall conditional distribution over measurement outcomes
+        frag_dist = conditional_distribution()
         for measurement, append_op in frag_exit_apnds: # for each measurement basis
 
             # construct the circuit to measure in the desired basis
@@ -124,13 +157,13 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None):
                     new_dist = np.delete(dist, 1-bit_state, axis = del_axis)
                     new_dist = np.reshape(new_dist, dist.shape[:-1])
 
-                    frag_dist[init_keys, new_exit_keys] = new_dist
+                    frag_dist.add(init_keys, new_exit_keys, new_dist)
 
         return frag_dist
 
     # if no init_frag_wires and no exit_frag_wires
     distribution = get_circuit_distribution(fragment)
-    return { ( frozenset(), frozenset() ) : distribution }
+    return conditional_distribution(distribution)
 
 # identify initialization and exit wires for each fragment
 # accepts dictionary of stitches and total number of fragments
@@ -184,12 +217,10 @@ def rearranged_wires(distribution, old_wire_order, new_wire_order, wire_map = No
     axis_permutation = [ len(new_wire_order) - 1 - idx for idx in wire_permutation ][::-1]
     return distribution.transpose(*axis_permutation)
 
-# all allowed assignments of measurement outcomes and states to the ends of a stitch
-stitch_assigments = [ ("+Z",)*2, ("-Z",)*2 ] \
-                  + [ ( dir_exit + op, dir_init + op)
-                      for op in [ "X", "Y" ]
-                      for dir_exit in [ "+", "-" ]
-                      for dir_init in [ "+", "-" ] ]
+# all operators to insert on either end of a stitch
+stitch_assignments = [ "I" ] + [ f"{ss}{BB}"
+                                 for BB in [ "Z", "X", "Y" ]
+                                 for ss in [ "+", "-" ] ]
 
 # simulate fragments and stitch together results
 # accepts a list of circuit fragments and a dictionary for how to stitch them together
@@ -208,9 +239,8 @@ def simulate_and_combine(fragments, frag_stitches,
     # initialize an empty combined distribution over outcomes
     combined_dist = np.zeros((2,)*len(combined_wire_order))
 
-    # loop over all assigments of measurement outcomes / initialized states
-    #   at the exit / init wires of all stitches
-    for assignment in set_product(stitch_assigments, repeat = len(frag_stitches)):
+    # loop over all assigments of stitch operators at all cut locations
+    for assignment in set_product(stitch_assignments, repeat = len(frag_stitches)):
 
         # collect the assignments of exit/init outcomes/states for each fragment
         frag_exit_keys = [ set() for _ in range(len(fragments)) ]
@@ -218,18 +248,16 @@ def simulate_and_combine(fragments, frag_stitches,
         for stitch_idx, ( exit_frag_wire, init_frag_wire ) in enumerate(frag_stitches.items()):
             exit_frag_idx, exit_wire = exit_frag_wire
             init_frag_idx, init_wire = init_frag_wire
-            frag_exit_keys[exit_frag_idx].add(( exit_wire, assignment[stitch_idx][0] ))
-            frag_init_keys[init_frag_idx].add(( init_wire, assignment[stitch_idx][1] ))
+            frag_exit_keys[exit_frag_idx].add(( exit_wire, assignment[stitch_idx] ))
+            frag_init_keys[init_frag_idx].add(( init_wire, assignment[stitch_idx] ))
 
         # get the conditional probability distribution at each fragment
-        dist_factors = [ frag_dist[frozenset(init_keys), frozenset(exit_keys)]
+        dist_factors = [ frag_dist[init_keys, exit_keys]
                          for frag_dist, init_keys, exit_keys
                          in zip(frag_dists, frag_init_keys, frag_exit_keys) ]
 
-        # get the scalar factor associated with this assignment of exit/init outcomes/states
-        scalar_factor = np.product([ ( 1 if fst[0] == snd[0] else -1 ) *
-                                     ( 1 if fst[1] == "Z" else 1/2 )
-                                     for fst, snd in assignment ])
+        # get the scalar factor associated with this assignment of stitch operators
+        scalar_factor = (-1)**np.sum( op == "I" for op in assignment )
 
         # add to the combined distribution over measurement outcomes
         combined_dist += scalar_factor * reduce(np.multiply.outer, dist_factors[::-1])
