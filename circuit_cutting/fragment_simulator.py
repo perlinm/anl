@@ -11,6 +11,10 @@ from functools import reduce
 # and combine fragment simulation results
 ##########################################################################################
 
+tetrahedron_vertices = [ [ 1, 1, 1 ], [ 1, -1, -1 ], [ -1, 1, -1 ], [ -1, -1, 1 ] ]
+tetrahedron_vertices = [ np.array(vec) / np.linalg.norm(vec)
+                         for vec in tetrahedron_vertices ]
+
 # class for a conditional distribution function
 class conditional_distribution:
     def __init__(self, empty_dist = None):
@@ -25,22 +29,48 @@ class conditional_distribution:
         return self.dist_dict.items()
 
     def __getitem__(self, key):
-        measure_ops = frozenset(key[0])
-        state_preps = frozenset(key[1])
-        for wire, op in measure_ops:
-            if op == "I":
-                vacancy = measure_ops.difference({(wire,op)})
-                measure_up = vacancy.union({(wire,"+Z")})
-                measure_dn = vacancy.union({(wire,"-Z")})
-                return self[measure_up, state_preps] + self[measure_dn, state_preps]
+        state_preps, measure_ops = key
+
         for wire, op in state_preps:
+            vacancy = state_preps.difference({(wire,op)})
             if op == "I":
-                vacancy = state_preps.difference({(wire,op)})
                 state_up = vacancy.union({(wire,"+Z")})
                 state_dn = vacancy.union({(wire,"-Z")})
-                return self[measure_ops, state_up] + self[measure_ops, state_dn]
+                return self[state_up, measure_ops] + self[state_dn, measure_ops]
 
-        return self.dist_dict[measure_ops, state_preps]
+            if op in [ "-X", "-Y" ]:
+                state_I = vacancy.union({(wire,"I")})
+                state_XY = vacancy.union({(wire,f"+{op[1]}")})
+                return self[state_I, measure_ops] - self[state_XY, measure_ops]
+
+            if type(op) is int:
+                vec = tetrahedron_vertices[op]
+                dist_I = self[vacancy.union({(wire,"I")}), measure_ops]
+                dist_Z = self[vacancy.union({(wire,"+Z")}), measure_ops]
+                dist_X = self[vacancy.union({(wire,"+X")}), measure_ops]
+                dist_Y = self[vacancy.union({(wire,"+Y")}), measure_ops]
+                dist_ZXY = [ dist_Z, dist_X, dist_Y ]
+                return ( sum( val * dist for val, dist in zip(vec, dist_ZXY ) ) +
+                         dist_I * ( 1 - sum(vec) ) / 2 )
+
+        for wire, op in measure_ops:
+            vacancy = measure_ops.difference({(wire,op)})
+            if op == "I":
+                measure_up = vacancy.union({(wire,"+Z")})
+                measure_dn = vacancy.union({(wire,"-Z")})
+                return self[state_preps, measure_up] + self[state_preps, measure_dn]
+
+            if type(op) is int:
+                vec = tetrahedron_vertices[op]
+                dist_I = self[state_preps, vacancy.union({(wire,"I")})]
+                dist_Z = self[state_preps, vacancy.union({(wire,"+Z")})]
+                dist_X = self[state_preps, vacancy.union({(wire,"+X")})]
+                dist_Y = self[state_preps, vacancy.union({(wire,"+Y")})]
+                dist_ZXY = [ dist_Z, dist_X, dist_Y ]
+                return ( sum( val * dist for val, dist in zip(vec, dist_ZXY ) ) +
+                         dist_I * ( 1 - sum(vec) ) / 2 )
+
+        return self.dist_dict[frozenset(state_preps), frozenset(measure_ops)]
 
 ##########################################################################################
 # methods to simulate circuit fragments and collect conditional probability distributions
@@ -76,9 +106,7 @@ gates = qs.extensions.standard
 frag_init_preps = [ ( "+Z", [ ] ),
                     ( "-Z", [ gates.XGate() ]  ),
                     ( "+X", [ gates.HGate() ] ),
-                    ( "-X", [ gates.XGate(), gates.HGate() ] ),
-                    ( "+Y", [ gates.HGate(), gates.SGate() ] ),
-                    ( "-Y", [ gates.XGate(), gates.HGate(), gates.SGate() ] ) ]
+                    ( "+Y", [ gates.HGate(), gates.SGate() ] ) ]
 frag_exit_apnds = [ ( "Z", [ ] ),
                     ( "X", [ gates.HGate() ] ),
                     ( "Y", [ gates.SGate().inverse(), gates.HGate() ] ) ]
