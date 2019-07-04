@@ -12,7 +12,7 @@ from functools import reduce
 ##########################################################################################
 
 # choose whether to prepare states in the ZXY or SIC basis
-state_prep_basis = "ZXY"
+state_prep_basis = "SIC"
 
 state_str_ZXY = [ "+Z", "-Z", "+X", "+Y" ]
 state_vecs_ZYX =  [ (1,0,0), (-1,0,0), (0,1,0), (0,0,1) ]
@@ -60,7 +60,11 @@ class conditional_distribution:
             self.dist_dict[frozenset(), frozenset()] = empty_dist
 
     def add(self, init_keys, exit_keys, dist):
-        self.dist_dict[frozenset(init_keys), frozenset(exit_keys)] = dist
+        keys = ( frozenset(init_keys), frozenset(exit_keys) )
+        try:
+            self.dist_dict[keys] += dist
+        except:
+            self.dist_dict[keys] = dist
 
     def items(self):
         return self.dist_dict.items()
@@ -98,7 +102,7 @@ class conditional_distribution:
                 if op == "-X": return dist((0,-1,0))
                 if op == "+Y": return dist((0,0,+1))
                 if op == "-Y": return dist((0,0,-1))
-                if op == "I":  return dist((0,0,0)) * 2
+                if op == "I":  return dist((0,0,0)) * 2 # twice the maximally mixed state
 
                 if type(op) is tuple:
                     fac = lambda vec : ( 1 + 3 * np.dot(op, vec) )
@@ -109,7 +113,9 @@ class conditional_distribution:
             vacancy = measure_ops.difference({(wire,op)})
             dist = lambda op : self[state_preps, vacancy.union({(wire,op)})]
 
-            if op == "I": return dist("+Z") + dist("-Z")
+            if op == "-Z": return dist("I") - dist("+Z")
+            if op == "-X": return dist("I") - dist("+X")
+            if op == "-Y": return dist("I") - dist("+Y")
 
             if type(op) is int:
                 vec = tuple(state_vecs_SIC[op])
@@ -219,14 +225,22 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None):
             # by the measured basis and measurement outcome on the exit wire
             for all_keys, dist in exit_frag_dist.items():
                 init_keys, exit_keys = all_keys
+                outcome_dist = {}
                 for outcome, bit_state in [ ( "+", 0 ), ( "-", 1 ) ]:
                     new_exit_keys = exit_keys.union({ ( exit_wire, outcome + measurement ) })
 
                     # project onto a given exit-wire measurement outcome
-                    new_dist = np.delete(dist, 1-bit_state, axis = del_axis)
-                    new_dist = np.reshape(new_dist, dist.shape[:-1])
+                    outcome_dist[outcome] = np.delete(dist, 1-bit_state, axis = del_axis)
+                    outcome_dist[outcome] = np.reshape(outcome_dist[outcome], dist.shape[:-1])
 
-                    frag_dist.add(init_keys, new_exit_keys, new_dist)
+                # collect conditional distribution on a "+" outcome, ...
+                new_exit_keys_up = exit_keys.union({ ( exit_wire, "+" + measurement ) })
+                frag_dist.add(init_keys, new_exit_keys_up, outcome_dist["+"])
+
+                # ... and a conditional distribution on measuring the identity operator
+                # note: diveded by 3 to average over measurements in 3 different bases
+                new_exit_keys_I = exit_keys.union({ ( exit_wire, "I" ) })
+                frag_dist.add(init_keys, new_exit_keys_I, sum(outcome_dist.values())/3)
 
         return frag_dist
 
