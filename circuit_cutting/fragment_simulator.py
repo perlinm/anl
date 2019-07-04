@@ -11,9 +11,15 @@ from functools import reduce
 # and combine fragment simulation results
 ##########################################################################################
 
-tetrahedron_vertices = [ [ 1, 1, 1 ], [ 1, -1, -1 ], [ -1, 1, -1 ], [ -1, -1, 1 ] ]
-tetrahedron_vertices = [ np.array(vec) / np.linalg.norm(vec)
-                         for vec in tetrahedron_vertices ]
+# choose whether to prepare states in the ZXY or SIC basis
+state_prep_basis = "SIC"
+
+state_str_ZXY = [ "+Z", "-Z", "+X", "+Y" ]
+state_vecs_ZYX =  [ (1,0,0), (-1,0,0), (0,1,0), (0,0,1) ]
+
+state_idx_SIC = [ 0, 1, 2, 3 ]
+state_vecs_SIC = [ [ 1, 1, 1 ], [ 1, -1, -1 ], [ -1, 1, -1 ], [ -1, -1, 1 ] ]
+state_vecs_SIC = [ np.array(vec) / np.linalg.norm(vec) for vec in state_vecs_SIC ]
 
 # class for a conditional distribution function
 class conditional_distribution:
@@ -29,48 +35,78 @@ class conditional_distribution:
         return self.dist_dict.items()
 
     def __getitem__(self, key):
-        state_preps, measure_ops = key
+        state_preps, measure_ops = frozenset(key[0]), frozenset(key[1])
+        try: return self.dist_dict[state_preps, measure_ops]
+        except: None
 
         for wire, op in state_preps:
             vacancy = state_preps.difference({(wire,op)})
-            if op == "I":
-                state_up = vacancy.union({(wire,"+Z")})
-                state_dn = vacancy.union({(wire,"-Z")})
-                return self[state_up, measure_ops] + self[state_dn, measure_ops]
 
-            if op in [ "-X", "-Y" ]:
-                state_I = vacancy.union({(wire,"I")})
-                state_XY = vacancy.union({(wire,f"+{op[1]}")})
-                return self[state_I, measure_ops] - self[state_XY, measure_ops]
+            if state_prep_basis == "ZXY":
 
-            if type(op) is int:
-                vec = tetrahedron_vertices[op]
-                dist_I = self[vacancy.union({(wire,"I")}), measure_ops]
-                dist_Z = self[vacancy.union({(wire,"+Z")}), measure_ops]
-                dist_X = self[vacancy.union({(wire,"+X")}), measure_ops]
-                dist_Y = self[vacancy.union({(wire,"+Y")}), measure_ops]
-                dist_ZXY = [ dist_Z, dist_X, dist_Y ]
-                return ( sum( val * dist for val, dist in zip(vec, dist_ZXY ) ) +
-                         dist_I * ( 1 - sum(vec) ) / 2 )
+                if op == "I":
+                    state_up = vacancy.union({(wire,"+Z")})
+                    state_dn = vacancy.union({(wire,"-Z")})
+                    return self[state_up, measure_ops] + self[state_dn, measure_ops]
+
+                if op in [ "-X", "-Y" ]:
+                    state_I = vacancy.union({(wire,"I")})
+                    state_XY = vacancy.union({(wire,f"+{op[1]}")})
+                    return self[state_I, measure_ops] - self[state_XY, measure_ops]
+
+                if type(op) is int:
+                    vec = tuple(state_vecs_SIC[op])
+                    state_vec = vacancy.union({(wire,vec)})
+                    return self[state_vec, measure_ops]
+
+                if type(op) is tuple:
+                    assert(len(op) == 3)
+                    dist_I = self[vacancy.union({(wire,"I")}), measure_ops]
+                    dist_Z = self[vacancy.union({(wire,"+Z")}), measure_ops]
+                    dist_X = self[vacancy.union({(wire,"+X")}), measure_ops]
+                    dist_Y = self[vacancy.union({(wire,"+Y")}), measure_ops]
+                    dist_ZXY = [ dist_Z, dist_X, dist_Y ]
+                    return ( sum( val * dist for val, dist in zip(op, dist_ZXY ) ) +
+                             dist_I * ( 1 - sum(op) ) / 2 )
+
+            else: # state_prep_basis == "SIC"
+
+                if op == "I":  return self[vacancy.union({(wire, (0,0,0))}), measure_ops]
+                if op == "+Z": return self[vacancy.union({(wire,(+1,0,0))}), measure_ops]
+                if op == "-Z": return self[vacancy.union({(wire,(-1,0,0))}), measure_ops]
+                if op == "+X": return self[vacancy.union({(wire,(0,+1,0))}), measure_ops]
+                if op == "-X": return self[vacancy.union({(wire,(0,-1,0))}), measure_ops]
+                if op == "+Y": return self[vacancy.union({(wire,(0,0,+1))}), measure_ops]
+                if op == "-Y": return self[vacancy.union({(wire,(0,0,-1))}), measure_ops]
+
+                if type(op) is tuple:
+                    fac = lambda vec : ( 1 + 3 * np.dot(op, vec) )
+                    dist = lambda idx : self[vacancy.union({(wire,idx)}), measure_ops]
+                    return 1/2 * sum( fac(vec) * dist(idx)
+                                      for idx, vec in zip(state_idx_SIC, state_vecs_SIC) )
 
         for wire, op in measure_ops:
             vacancy = measure_ops.difference({(wire,op)})
+
             if op == "I":
                 measure_up = vacancy.union({(wire,"+Z")})
                 measure_dn = vacancy.union({(wire,"-Z")})
                 return self[state_preps, measure_up] + self[state_preps, measure_dn]
 
             if type(op) is int:
-                vec = tetrahedron_vertices[op]
+                vec = tuple(state_vecs_SIC[op])
+                measure_op = vacancy.union({(wire,vec)})
+                return self[state_preps, measure_op]
+
+            if type(op) is tuple:
+                assert(len(op) == 3)
                 dist_I = self[state_preps, vacancy.union({(wire,"I")})]
                 dist_Z = self[state_preps, vacancy.union({(wire,"+Z")})]
                 dist_X = self[state_preps, vacancy.union({(wire,"+X")})]
                 dist_Y = self[state_preps, vacancy.union({(wire,"+Y")})]
                 dist_ZXY = [ dist_Z, dist_X, dist_Y ]
-                return ( sum( val * dist for val, dist in zip(vec, dist_ZXY ) ) +
-                         dist_I * ( 1 - sum(vec) ) / 2 )
-
-        return self.dist_dict[frozenset(state_preps), frozenset(measure_ops)]
+                return ( sum( val * dist for val, dist in zip(op, dist_ZXY ) ) +
+                         dist_I * ( 1 - sum(op) ) / 2 )
 
 ##########################################################################################
 # methods to simulate circuit fragments and collect conditional probability distributions
@@ -85,6 +121,8 @@ def empty_circuit(circuit):
 # act with the given gates acting on the given qubits
 def act_gates(circuit, gates, *qubits):
     new_circuit = empty_circuit(circuit)
+    if not gates: return new_circuit
+    if type(gates) is not list: gates = [ gates ]
     for gate in gates:
         new_circuit.append(gate, qargs = list(qubits))
     return new_circuit
@@ -101,15 +139,26 @@ def get_circuit_distribution(circuit, backend = "statevector_simulator"):
         print("backend not supported:", backend)
         return None
 
+# return a gate that rotates |0> into a state pointing along the given vector
+def vec_gate(vec):
+    vec /= np.linalg.norm(vec)
+    theta = np.arccos(vec[0]) # angle down from north pole, i.e. from |0>
+    phi = np.arctan2(vec[2],vec[1]) # angle in the X-Y plane
+    return qs.extensions.standard.U3Gate(theta, phi, 0)
+
 # sequences of gates to (i) prepare initial states, (ii) measure in different bases
-gates = qs.extensions.standard
-frag_init_preps = [ ( "+Z", [ ] ),
-                    ( "-Z", [ gates.XGate() ]  ),
-                    ( "+X", [ gates.HGate() ] ),
-                    ( "+Y", [ gates.HGate(), gates.SGate() ] ) ]
-frag_exit_apnds = [ ( "Z", [ ] ),
-                    ( "X", [ gates.HGate() ] ),
-                    ( "Y", [ gates.SGate().inverse(), gates.HGate() ] ) ]
+if state_prep_basis == "ZXY":
+    init_states = state_str_ZXY
+    init_vecs = state_vecs_ZYX
+else: # state_prep_basis == "SIC"
+    init_states = state_idx_SIC
+    init_vecs = state_vecs_SIC
+frag_init_preps = [ ( state, vec_gate(vec) )
+                      for state, vec in zip(init_states, init_vecs) ]
+frag_exit_apnds = [ ( "Z", None ),
+                    ( "X", [ qs.extensions.standard.HGate() ] ),
+                    ( "Y", [ qs.extensions.standard.SGate().inverse(),
+                             qs.extensions.standard.HGate() ] ) ]
 
 # get a distributions over measurement outcomes for a circuit fragment
 # accepts a list of fragments, and lists of wires (i.e. in that fragment) that are
@@ -246,9 +295,13 @@ def rearranged_wires(distribution, old_wire_order, new_wire_order, wire_map = No
     return distribution.transpose(*axis_permutation)
 
 # all operators to insert on either end of a stitch
-stitch_assignments = [ "I" ] + [ f"{ss}{BB}"
-                                 for BB in [ "Z", "X", "Y" ]
-                                 for ss in [ "+", "-" ] ]
+if state_prep_basis == "ZXY":
+   stitch_assignments = [ f"{ss}{BB}"
+                          for BB in [ "Z", "X", "Y" ]
+                          for ss in [ "+", "-" ] ]
+else: # state_prep_basis == "SIC"
+    stitch_assignments = state_idx_SIC
+stitch_assignments += [ "I" ]
 
 # simulate fragments and stitch together results
 # accepts a list of circuit fragments and a dictionary for how to stitch them together
@@ -285,7 +338,10 @@ def simulate_and_combine(fragments, frag_stitches,
                          in zip(frag_dists, frag_init_keys, frag_exit_keys) ]
 
         # get the scalar factor associated with this assignment of stitch operators
-        scalar_factor = (-1)**np.sum( op == "I" for op in assignment )
+        if state_prep_basis == "ZXY":
+            scalar_factor = (-1)**np.sum( op == "I" for op in assignment )
+        else: # state_prep_basis == "SIC"
+            scalar_factor = np.product([ -1 if op == "I" else 3/2 for op in assignment ])
 
         # add to the combined distribution over measurement outcomes
         combined_dist += scalar_factor * reduce(np.multiply.outer, dist_factors[::-1])

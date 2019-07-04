@@ -15,13 +15,23 @@ layers = 2
 qreg = qs.QuantumRegister(qubits, "q")
 circ = qs.QuantumCircuit(qreg)
 
+np.random.seed(0)
+def random_unitary():
+    return qs.quantum_info.random.utils.random_unitary(4)
+
+for idx, qubit in enumerate(qreg):
+    circ.u0(idx, qubit)
+
 for layer in range(layers):
     for odd_links in range(2):
         for jj in range(odd_links, qubits-1, 2):
-            random_gate = qs.quantum_info.random.utils.random_unitary(4)
+            random_gate = random_unitary()
             circ.append(random_gate, [ qreg[jj], qreg[jj+1] ])
 
-cuts = [ (qreg[qubits//2], op) for op in range(1,2*layers) ]
+for idx, qubit in enumerate(qreg):
+    circ.u0(idx, qubit)
+
+cuts = [ (qreg[qubits//2], op+1) for op in range(1,2*layers) ]
 fragments, frag_wiring, frag_stitches = cut_circuit(circ, *cuts)
 
 print("original circuit:")
@@ -46,9 +56,6 @@ for old_wire, new_wire in sorted(frag_stitches.items()):
 ##########################################################################################
 # get distribution functions over measurement outcomes and print results
 
-circ_dist = get_circuit_distribution(circ)
-combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits)
-
 # convert a distribution function into dictionary format
 def dist_vec_to_dict(distribution):
     return { "".join([ str(bb) for bb in idx ]) : distribution[idx]
@@ -57,12 +64,14 @@ def dist_vec_to_dict(distribution):
 
 # fidelity of two distribution functions: tr( sqrt(rho_0 * rho_1) )
 def distribution_fidelity(dist_0, dist_1):
-    return sum( np.sqrt(dist_0[idx] * dist_1[idx])
+    return sum( np.sqrt(dist_0[idx] * dist_1[idx] * (1+0j))
                 for idx in np.ndindex(dist_0.shape) )
+
+circ_dist = get_circuit_distribution(circ)
+combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits)
 
 print()
 print("full circuit probability distribution")
-circ_wires = circ.qubits
 for key, val in dist_vec_to_dict(circ_dist).items():
     print(key, val)
 
