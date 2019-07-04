@@ -21,6 +21,39 @@ state_idx_SIC = [ 0, 1, 2, 3 ]
 state_vecs_SIC = [ [ 1, 1, 1 ], [ 1, -1, -1 ], [ -1, 1, -1 ], [ -1, -1, 1 ] ]
 state_vecs_SIC = [ np.array(vec) / np.linalg.norm(vec) for vec in state_vecs_SIC ]
 
+if state_prep_basis == "ZXY":
+    # initial states by label and vector
+    init_states = state_str_ZXY
+    init_vecs = state_vecs_ZYX
+
+    # operators to insert on either end of a stitch
+    stitch_assignments = [ f"{ss}{BB}"
+                               for BB in [ "Z", "X", "Y" ]
+                               for ss in [ "+", "-" ] ] + [ "I" ]
+
+else: # state_prep_basis == "SIC"
+    # initial states by label and vector
+    init_states = state_idx_SIC
+    init_vecs = state_vecs_SIC
+
+    # operators to insert on either end of a stitch
+    stitch_assignments = state_idx_SIC + [ "I" ]
+
+# return a gate that rotates |0> into a state pointing along the given vector
+def vec_gate(vec):
+    vec /= np.linalg.norm(vec)
+    theta = np.arccos(vec[0]) # angle down from north pole, i.e. from |0>
+    phi = np.arctan2(vec[2],vec[1]) # angle in the X-Y plane
+    return qs.extensions.standard.U3Gate(theta, phi, 0)
+
+# sequences of gates to (i) prepare initial states, (ii) measure in different bases
+frag_init_preps = [ ( state, vec_gate(vec) )
+                      for state, vec in zip(init_states, init_vecs) ]
+frag_exit_apnds = [ ( "Z", None ),
+                    ( "X", [ qs.extensions.standard.HGate() ] ),
+                    ( "Y", [ qs.extensions.standard.SGate().inverse(),
+                             qs.extensions.standard.HGate() ] ) ]
+
 # class for a conditional distribution function
 class conditional_distribution:
     def __init__(self, empty_dist = None):
@@ -71,19 +104,19 @@ class conditional_distribution:
 
             else: # state_prep_basis == "SIC"
 
-                if op == "I":  return self[vacancy.union({(wire, (0,0,0))}), measure_ops]
                 if op == "+Z": return self[vacancy.union({(wire,(+1,0,0))}), measure_ops]
                 if op == "-Z": return self[vacancy.union({(wire,(-1,0,0))}), measure_ops]
                 if op == "+X": return self[vacancy.union({(wire,(0,+1,0))}), measure_ops]
                 if op == "-X": return self[vacancy.union({(wire,(0,-1,0))}), measure_ops]
                 if op == "+Y": return self[vacancy.union({(wire,(0,0,+1))}), measure_ops]
                 if op == "-Y": return self[vacancy.union({(wire,(0,0,-1))}), measure_ops]
+                if op == "I": return 2 * self[vacancy.union({(wire,(0,0,0))}), measure_ops]
 
                 if type(op) is tuple:
                     fac = lambda vec : ( 1 + 3 * np.dot(op, vec) )
                     dist = lambda idx : self[vacancy.union({(wire,idx)}), measure_ops]
-                    return 1/2 * sum( fac(vec) * dist(idx)
-                                      for idx, vec in zip(state_idx_SIC, state_vecs_SIC) )
+                    SIC_idx_vecs = zip(state_idx_SIC, state_vecs_SIC)
+                    return 1/4 * sum( fac(vec) * dist(idx) for idx, vec in SIC_idx_vecs )
 
         for wire, op in measure_ops:
             vacancy = measure_ops.difference({(wire,op)})
@@ -138,27 +171,6 @@ def get_circuit_distribution(circuit, backend = "statevector_simulator"):
     else:
         print("backend not supported:", backend)
         return None
-
-# return a gate that rotates |0> into a state pointing along the given vector
-def vec_gate(vec):
-    vec /= np.linalg.norm(vec)
-    theta = np.arccos(vec[0]) # angle down from north pole, i.e. from |0>
-    phi = np.arctan2(vec[2],vec[1]) # angle in the X-Y plane
-    return qs.extensions.standard.U3Gate(theta, phi, 0)
-
-# sequences of gates to (i) prepare initial states, (ii) measure in different bases
-if state_prep_basis == "ZXY":
-    init_states = state_str_ZXY
-    init_vecs = state_vecs_ZYX
-else: # state_prep_basis == "SIC"
-    init_states = state_idx_SIC
-    init_vecs = state_vecs_SIC
-frag_init_preps = [ ( state, vec_gate(vec) )
-                      for state, vec in zip(init_states, init_vecs) ]
-frag_exit_apnds = [ ( "Z", None ),
-                    ( "X", [ qs.extensions.standard.HGate() ] ),
-                    ( "Y", [ qs.extensions.standard.SGate().inverse(),
-                             qs.extensions.standard.HGate() ] ) ]
 
 # get a distributions over measurement outcomes for a circuit fragment
 # accepts a list of fragments, and lists of wires (i.e. in that fragment) that are
@@ -293,15 +305,6 @@ def rearranged_wires(distribution, old_wire_order, new_wire_order, wire_map = No
     wire_permutation = [ current_wire_order.index(wire) for wire in new_wire_order ]
     axis_permutation = [ len(new_wire_order) - 1 - idx for idx in wire_permutation ][::-1]
     return distribution.transpose(*axis_permutation)
-
-# all operators to insert on either end of a stitch
-if state_prep_basis == "ZXY":
-   stitch_assignments = [ f"{ss}{BB}"
-                          for BB in [ "Z", "X", "Y" ]
-                          for ss in [ "+", "-" ] ]
-else: # state_prep_basis == "SIC"
-    stitch_assignments = state_idx_SIC
-stitch_assignments += [ "I" ]
 
 # simulate fragments and stitch together results
 # accepts a list of circuit fragments and a dictionary for how to stitch them together
