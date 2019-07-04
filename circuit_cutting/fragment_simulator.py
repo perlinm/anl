@@ -46,10 +46,8 @@ def prep_gate(state):
     return qs.extensions.standard.U3Gate(theta, phi, 0)
 
 # gates to measure in different bases
-basis_measurement_gates = { "Z": None ,
-                            "X" : qs.extensions.standard.HGate(),
-                            "Y" : [ qs.extensions.standard.SGate().inverse(),
-                                    qs.extensions.standard.HGate() ] }
+basis_measurement_gates = { basis : prep_gate(f"+{basis}").inverse()
+                            for basis in [ "Z", "X", "Y" ] }
 
 # class for a conditional distribution function
 class conditional_distribution:
@@ -158,14 +156,44 @@ def act_gates(circuit, gates, *qubits):
 # get a distribution over measurement outcomes for a circuit
 def get_circuit_distribution(circuit, backend_simulator = "statevector_simulator",
                              num_shots = None):
+    assert( backend_simulator == "statevector_simulator" or num_shots is not None )
     simulator = qs.Aer.get_backend(backend_simulator)
 
     if backend_simulator == "statevector_simulator":
         result = qs.execute(circuit, simulator).result()
         state_vector = result.get_statevector(circuit)
         return np.reshape(abs(state_vector)**2, (2,)*(len(state_vector).bit_length()-1))
+
+    if backend_simulator == "qasm_simulator":
+        # identify current registers in the circuit
+        qubit_registers = [ wire[0] for wire in circuit.qubits if wire[1] == 0 ]
+        clbit_registers = [ wire[0] for wire in circuit.clbits if wire[1] == 0 ]
+        all_registers = qubit_registers + clbit_registers
+
+        # add measurements for all quantum registers
+        name_prefix = "_".join( register.prefix for register in all_registers )
+        for rr, register in enumerate(qubit_registers):
+            bits = len(register)
+            name = name_prefix + f"_{rr}"
+            measurement_register = qs.ClassicalRegister(bits, name)
+            circuit.add_register(measurement_register)
+            circuit.measure(register, measurement_register)
+
+        # simulate!
+        result = qs.execute(circuit, simulator, shots = num_shots).result()
+        state_counts = result.get_counts(circuit)
+        dist_dict = { state : counts / num_shots
+                      for state, counts in state_counts.items() }
+
+        # todo: fix TEMPORARY WORKAROUND -- collect simulation results into an array
+        dist_array = np.zeros((2,)*(len(circuit.clbits)))
+        for state, prob in dist_dict.items():
+            state_idx = tuple( int(bit) for bit in state )
+            dist_array[state_idx] = prob
+
+        return dist_array
+
     else:
-        # assert( num_shots is not None )
         print("backend not supported:", backend_simulator)
         return None
 
@@ -323,12 +351,14 @@ def sort_init_exit_wires(frag_stitches, num_fragments):
 # compute conditional probability distributions for all circuit fragments
 # accepts a list of fragments and stitch data
 # returns a list of conditional probability distributions over measurement outcomes
-def get_fragment_distributions(fragments, frag_stitches):
+def get_fragment_distributions(fragments, frag_stitches,
+                               backend_simulator = "statevector_simulator",
+                               num_shots = None):
     # collect lists of initialization / exit wires for all fragments
     init_wires, exit_wires = sort_init_exit_wires(frag_stitches, len(fragments))
 
     # compute conditional distributions over measurement outcomes for all fragments
-    return [ get_fragment_distribution(ff, ii, ee)
+    return [ get_fragment_distribution(ff, ii, ee, backend_simulator, num_shots)
              for ff, ii, ee in zip(fragments, init_wires, exit_wires) ]
 
 ##########################################################################################
@@ -358,9 +388,12 @@ def rearranged_wires(distribution, old_wire_order, new_wire_order, wire_map = No
 # accepts a list of circuit fragments and a dictionary for how to stitch them together
 # return a distribution over measurement outcomes on the stitched-together circuit
 def simulate_and_combine(fragments, frag_stitches,
-                         frag_wiring = None, wire_order = None):
+                         frag_wiring = None, wire_order = None,
+                         backend_simulator = "statevector_simulator",
+                         num_shots = None):
     # get conditional probability distributions for of all circuit fragments
-    frag_dists = get_fragment_distributions(fragments, frag_stitches)
+    frag_dists = get_fragment_distributions(fragments, frag_stitches,
+                                            backend_simulator, num_shots)
 
     # identify the order of wires in a combined/reconstructed distribution over outcomes
     combined_wire_order = [ ( frag_idx, qubit )
