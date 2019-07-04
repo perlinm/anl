@@ -15,6 +15,7 @@ from copy import deepcopy
 # choose whether to prepare states in the SIC or ZXY basis
 SIC, ZXY = "SIC", "ZXY" # define these to protect against typos
 state_prep_basis = SIC
+stitching_basis = SIC
 
 # define state vectors for SIC basis
 state_vecs_SIC = [ ( +1, +1, +1 ), ( +1, -1, -1 ), ( -1, +1, -1 ), ( -1, -1, +1 ) ]
@@ -32,7 +33,10 @@ state_vecs_ZXY = { "+Z" : (+1,0,0),
 state_vecs = dict(state_vecs_ZXY, **state_vecs_SIC)
 
 # operators to insert on either end of a stitch
-stitch_assignments = list(state_vecs_ZXY.keys()) + [ "I" ]
+if stitching_basis == SIC:
+    stitch_ops = list(state_vecs_SIC.keys()) + [ "I" ]
+else: # stitching_basis == ZXY
+    stitch_ops = list(state_vecs_ZXY.keys()) + [ "I" ]
 
 # return a gate that rotates |0> into a state pointing along the given vector
 def prep_gate(state):
@@ -368,7 +372,7 @@ def simulate_and_combine(fragments, frag_stitches,
     combined_dist = np.zeros((2,)*len(combined_wire_order))
 
     # loop over all assigments of stitch operators at all cut locations
-    for assignment in set_product(stitch_assignments, repeat = len(frag_stitches)):
+    for op_assignment in set_product(stitch_ops, repeat = len(frag_stitches)):
 
         # collect the assignments of exit/init outcomes/states for each fragment
         frag_exit_keys = [ set() for _ in range(len(fragments)) ]
@@ -376,8 +380,8 @@ def simulate_and_combine(fragments, frag_stitches,
         for stitch_idx, ( exit_frag_wire, init_frag_wire ) in enumerate(frag_stitches.items()):
             exit_frag_idx, exit_wire = exit_frag_wire
             init_frag_idx, init_wire = init_frag_wire
-            frag_exit_keys[exit_frag_idx].add(( exit_wire, assignment[stitch_idx] ))
-            frag_init_keys[init_frag_idx].add(( init_wire, assignment[stitch_idx] ))
+            frag_exit_keys[exit_frag_idx].add(( exit_wire, op_assignment[stitch_idx] ))
+            frag_init_keys[init_frag_idx].add(( init_wire, op_assignment[stitch_idx] ))
 
         # get the conditional probability distribution at each fragment
         dist_factors = [ frag_dist[init_keys, exit_keys]
@@ -385,7 +389,10 @@ def simulate_and_combine(fragments, frag_stitches,
                          in zip(frag_dists, frag_init_keys, frag_exit_keys) ]
 
         # get the scalar factor associated with this assignment of stitch operators
-        scalar_factor = (-1)**np.sum( op == "I" for op in assignment )
+        if stitching_basis == SIC:
+            scalar_factor = np.product([ -1 if op == "I" else 3/2 for op in op_assignment ])
+        else: # stitching_basis == ZXY
+            scalar_factor = (-1)**np.sum( op == "I" for op in op_assignment )
 
         # add to the combined distribution over measurement outcomes
         combined_dist += scalar_factor * reduce(np.multiply.outer, dist_factors[::-1])
