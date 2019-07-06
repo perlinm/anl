@@ -3,6 +3,11 @@
 import numpy as np
 import qiskit as qs
 
+import os
+import tensorflow as tf
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+tf.compat.v1.enable_v2_behavior()
+
 from circuit_cutter import cut_circuit
 from fragment_simulator import get_circuit_distribution, simulate_and_combine
 
@@ -56,19 +61,38 @@ for old_wire, new_wire in sorted(frag_stitches.items()):
 ##########################################################################################
 # get distribution functions over measurement outcomes and print results
 
+# convert a 1-D array of values into a string
+def to_str(vals):
+    return "".join([ str(val) for val in vals ])
+
 # convert a distribution function into dictionary format
-def dist_vec_to_dict(distribution):
-    return { "".join([ str(bb) for bb in idx ]) : distribution[idx]
+def dist_vec_to_dict(distribution, cutoff = 1e-10):
+    if type(distribution) is dict: return distribution
+
+    if type(distribution) is tf.SparseTensor:
+        idx_val_zip = zip(distribution.indices, distribution.values)
+        dist_dict = { to_str(idx.numpy()) : val.numpy()
+                      for idx, val in idx_val_zip }
+        return dist_dict
+
+    if type(distribution) is not np.ndarray:
+        return dist_vec_to_dict(np.array(distribution))
+
+    return { to_str(idx) : distribution[idx]
              for idx in np.ndindex(distribution.shape)
-             if distribution[idx] != 0 }
+             if abs(distribution[idx]) > cutoff }
 
 # fidelity of two distribution functions: tr( sqrt(rho_0 * rho_1) )
 def distribution_fidelity(dist_0, dist_1):
-    return sum( np.sqrt(dist_0[idx] * dist_1[idx] * (1+0j))
-                for idx in np.ndindex(dist_0.shape) )
+    return sum( np.sqrt(complex(dist_0[idx]) * complex(dist_1[idx]))
+                for idx in np.ndindex(tuple(dist_0.shape)) )
 
 circ_dist = get_circuit_distribution(circ)
-combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits)
+
+# combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits)
+combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits,
+                                     backend_simulator = "qasm_simulator", num_shots = 1000)
+combined_dist = tf.sparse.to_dense(combined_dist)
 
 print()
 print("full circuit probability distribution")
@@ -81,4 +105,4 @@ for key, val in dist_vec_to_dict(combined_dist).items():
     print(key, val)
 
 print()
-print("fidelity:", distribution_fidelity(abs(circ_dist), abs(combined_dist)))
+print("fidelity:", distribution_fidelity(circ_dist, combined_dist))

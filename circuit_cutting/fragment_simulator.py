@@ -3,6 +3,13 @@
 import numpy as np
 import qiskit as qs
 
+import os
+import tensorflow as tf
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+tf.compat.v1.enable_v2_behavior()
+
+from tensorflow_extension import *
+
 from itertools import product as set_product
 from functools import reduce
 from copy import deepcopy
@@ -68,11 +75,11 @@ class conditional_distribution:
 
     # add data to the conditional distribution function
     def add(self, init_keys, exit_keys, dist):
-        keys = ( frozenset(init_keys), frozenset(exit_keys) )
+        key = ( frozenset(init_keys), frozenset(exit_keys) )
         try:
-            self.dist_dict[keys] += dist
+            self.dist_dict[key] += dist
         except:
-            self.dist_dict[keys] = deepcopy(dist)
+            self.dist_dict[key] = deepcopy(dist)
 
     # retrieve a distribution function with given conditions
     def __getitem__(self, conditions):
@@ -162,7 +169,8 @@ def get_circuit_distribution(circuit, backend_simulator = "statevector_simulator
     if backend_simulator == "statevector_simulator":
         result = qs.execute(circuit, simulator).result()
         state_vector = result.get_statevector(circuit)
-        return np.reshape(abs(state_vector)**2, (2,)*(len(state_vector).bit_length()-1))
+        qubits = len(state_vector).bit_length()-1
+        return tf.constant(abs(state_vector)**2, shape = (2,)*qubits)
 
     if backend_simulator == "qasm_simulator":
         # identify current registers in the circuit
@@ -182,16 +190,13 @@ def get_circuit_distribution(circuit, backend_simulator = "statevector_simulator
         # simulate!
         result = qs.execute(circuit, simulator, shots = num_shots).result()
         state_counts = result.get_counts(circuit)
-        dist_dict = { state : counts / num_shots
-                      for state, counts in state_counts.items() }
 
-        # todo: fix TEMPORARY WORKAROUND -- collect simulation results into an array
-        dist_array = np.zeros((2,)*(len(circuit.clbits)))
-        for state, prob in dist_dict.items():
-            state_idx = tuple( int(bit) for bit in state )
-            dist_array[state_idx] = prob
-
-        return dist_array
+        # collect results into a sparse tensor
+        indices = [ tuple( int(bit) for bit in state ) for state in state_counts.keys() ]
+        values = list(state_counts.values())
+        dense_shape = (2,)*len(circuit.clbits)
+        sparse_dist = tf.SparseTensor(indices, values, dense_shape) / num_shots
+        return tf.sparse.reorder(sparse_dist)
 
     else:
         print("backend not supported:", backend_simulator)
@@ -210,6 +215,11 @@ def get_circuit_distribution(circuit, backend_simulator = "statevector_simulator
 def get_fragment_distribution(fragment, init_wires = None, exit_wires = None,
                               backend_simulator = "statevector_simulator",
                               num_shots = None):
+    if backend_simulator == "statevector_simulator":
+        tf_module = tf
+    else:
+        tf_module = tf.sparse
+
     if init_wires: # if we have wires to initialize into various states
 
         # pick the first init wire for state initialization
@@ -314,8 +324,13 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None,
                 outcome_dist = {}
                 for outcome, bit_state in [ ( "+", 0 ), ( "-", 1 ) ]:
                     # project onto a given exit-wire measurement outcome
-                    outcome_dist[outcome] = np.delete(dist, 1-bit_state, axis = del_axis)
-                    outcome_dist[outcome] = np.reshape(outcome_dist[outcome], dist.shape[:-1])
+                    begin = [0]*len(dist.shape)
+                    size = [2]*len(dist.shape)
+                    begin[del_axis] = bit_state
+                    size[del_axis] = 1
+                    outcome_dist[outcome] = tf_module.slice(dist, begin, size)
+                    outcome_dist[outcome] = tf_module.reshape(outcome_dist[outcome],
+                                                              (2,)*(len(dist.shape)-1))
 
                 # collect conditional distribution on a "+" outcome, ...
                 frag_dist.add(init_keys, exit_keys(f"+{basis}"), outcome_dist["+"])
@@ -382,7 +397,10 @@ def rearranged_wires(distribution, old_wire_order, new_wire_order, wire_map = No
     current_wire_order = [ wire_map[wire] for wire in old_wire_order ]
     wire_permutation = [ current_wire_order.index(wire) for wire in new_wire_order ]
     axis_permutation = [ len(new_wire_order) - 1 - idx for idx in wire_permutation ][::-1]
-    return distribution.transpose(*axis_permutation)
+    if type(distribution) is not tf.SparseTensor:
+        return tf.transpose(distribution, axis_permutation)
+    else:
+        return tf.sparse.transpose(distribution, axis_permutation)
 
 # simulate fragments and stitch together results
 # accepts a list of circuit fragments and a dictionary for how to stitch them together
@@ -390,7 +408,7 @@ def rearranged_wires(distribution, old_wire_order, new_wire_order, wire_map = No
 def simulate_and_combine(fragments, frag_stitches,
                          frag_wiring = None, wire_order = None,
                          backend_simulator = "statevector_simulator",
-                         num_shots = None):
+                         num_shots = None, dtype = tf.float64):
     # get conditional probability distributions for of all circuit fragments
     frag_dists = get_fragment_distributions(fragments, frag_stitches,
                                             backend_simulator, num_shots)
@@ -402,7 +420,13 @@ def simulate_and_combine(fragments, frag_stitches,
                             if ( frag_idx, qubit ) not in frag_stitches.keys() ]
 
     # initialize an empty combined distribution over outcomes
-    combined_dist = np.zeros((2,)*len(combined_wire_order))
+    dist_shape = (2,)*len(combined_wire_order)
+    if backend_simulator == "statevector_simulator":
+        combined_dist = tf.zeros(dist_shape, dtype = dtype)
+    else:
+        indices = np.empty((0,len(dist_shape)))
+        values = tf.constant([], dtype = dtype)
+        combined_dist = tf.SparseTensor(indices, values, dist_shape)
 
     # loop over all assigments of stitch operators at all cut locations
     for op_assignment in set_product(stitch_ops, repeat = len(frag_stitches)):
@@ -428,7 +452,7 @@ def simulate_and_combine(fragments, frag_stitches,
             scalar_factor = (-1)**np.sum( op == "I" for op in op_assignment )
 
         # add to the combined distribution over measurement outcomes
-        combined_dist += scalar_factor * reduce(np.multiply.outer, dist_factors[::-1])
+        combined_dist += scalar_factor * reduce(tf_outer_product, dist_factors[::-1])
 
     # if we did not provide wiring info,
     #   return the combined distribution over measurement outcomes,
