@@ -25,8 +25,8 @@ small_value = 1e-6
 max_inv_temp_val = 3
 quantum_backend = False
 
-spokes = 2
-sizes = range(3,7)
+spokes = 3
+sizes = range(3,6)
 
 fig_dir = "figures/"
 
@@ -73,7 +73,7 @@ for size in sizes:
         log_Z_small_field = log_norm + 1/2 * log_prob + log_net_scale
         sqr_M[jj] = 2 * ( log_Z_small_field - log_Z[jj] ) / small_value**2 / inv_temps[jj]**2
 
-    temp_text = r"$\beta / \beta_{\mathrm{crit}}$"
+    temp_text = r"$\beta / \beta_{\mathrm{crit}}^{(2)}$"
     title_text = r"lattice size: ${}$".format(r"\times ".join(["N"]*len(lattice_shape)))
 
     # probability of "acceptance" -- finding all ancillas in |0>
@@ -127,6 +127,6 @@ if save_figures:
     if not os.path.isdir(fig_dir): os.mkdir(fig_dir)
     for fig_name in [ "probs", "log_Z", "energy", "mag" ]:
         plt.figure(fig_name)
-        plt.savefig(fig_dir + fig_name + f"_{size}.pdf")
+        plt.savefig(fig_dir + fig_name + f"_{spokes}_{size}.pdf")
 
 if show_figures: plt.show()
