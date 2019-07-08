@@ -39,7 +39,7 @@ params = { "font.family" : "serif",
                                      r"\usepackage{braket}" ]}
 plt.rcParams.update(params)
 
-inv_temp_crit = np.log(1+np.sqrt(2)) / 2
+inv_temp_crit = np.log(1+np.sqrt(2))
 inv_temps = np.linspace(0, max_inv_temp_val, steps) * inv_temp_crit
 
 log_Z = np.zeros(steps)
