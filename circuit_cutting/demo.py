@@ -39,6 +39,7 @@ for idx, qubit in enumerate(qreg):
 cuts = [ (qreg[qubits//2], op+1) for op in range(1,2*layers) ]
 fragments, frag_wiring, frag_stitches = cut_circuit(circ, *cuts)
 
+
 print("original circuit:")
 print(circ)
 
@@ -84,15 +85,30 @@ def dist_vec_to_dict(distribution, cutoff = 1e-10):
 
 # fidelity of two distribution functions: tr( sqrt(rho_0 * rho_1) )
 def distribution_fidelity(dist_0, dist_1):
+    if type(dist_0) is tf.SparseTensor and type(dist_1) is not tf.SparseTensor:
+        return sum( np.sqrt(complex(value) * complex(dist_1[tuple(idx)]))
+                    for idx, value in zip(dist_0.indices, dist_0.values) )
+
+    if type(dist_1) is tf.SparseTensor and type(dist_0) is not tf.SparseTensor:
+        return distribution_fidelity(dist_1, dist_0)
+
+    if type(dist_0) is tf.SparseTensor and type(dist_1) is tf.SparseTensor:
+        idx_0 = { tuple(idx) : jj for jj, idx in enumerate(dist_0.indices.numpy()) }
+        idx_1 = { tuple(idx) : jj for jj, idx in enumerate(dist_1.indices.numpy()) }
+        return sum( np.sqrt(complex(dist_0.values[idx_0[tuple(idx)]]) *
+                            complex(dist_1.values[idx_1[tuple(idx)]]))
+                    for idx in idx_0.keys() if idx in idx_1.keys() )
+
     return sum( np.sqrt(complex(dist_0[idx]) * complex(dist_1[idx]))
                 for idx in np.ndindex(tuple(dist_0.shape)) )
+
 
 circ_dist = get_circuit_distribution(circ)
 
 # combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits)
 combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits,
                                      backend_simulator = "qasm_simulator", num_shots = 1000)
-combined_dist = tf.sparse.to_dense(combined_dist)
+
 
 print()
 print("full circuit probability distribution")
