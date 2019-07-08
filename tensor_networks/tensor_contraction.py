@@ -201,13 +201,14 @@ def classical_contraction(net, bubbler):
     for node_idx, node in enumerate(bubbler):
         inp_edges, inp_op_idx, out_edges, out_op_idx = get_edge_info(node, eaten_nodes)
 
-        # number of input/output qubits to the swallowing operator
-        inp_num = len(inp_edges)
-        out_num = len(out_edges)
+        # get the dimensions of the input/output spaces
+        node_shape = node.get_tensor().shape
+        inp_dim = np.prod([ node_shape[idx] for idx in inp_op_idx ], dtype = int)
+        out_dim = np.prod([ node_shape[idx] for idx in out_op_idx ], dtype = int)
 
         # get the tensor associated with this node, reordering axes as necessary
         swallow_tensor = tf.transpose(node.get_tensor(), out_op_idx + inp_op_idx)
-        swallow_matrix = tf.reshape(swallow_tensor, (2**out_num, 2**inp_num))
+        swallow_matrix = tf.reshape(swallow_tensor, (out_dim, inp_dim))
         vals_D, _, _ = tf.linalg.svd(swallow_matrix)
         norm_D = max(vals_D.numpy())
         log_net_norm += np.log(vals_D.numpy().max())

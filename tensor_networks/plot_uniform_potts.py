@@ -3,7 +3,7 @@
 import os, sys
 import numpy as np
 
-from ising_tensors import ising_network
+from potts_network import potts_network
 from tensor_contraction import quantum_contraction, classical_contraction
 
 import matplotlib.pyplot as plt
@@ -23,8 +23,10 @@ figsize = (6,5)
 steps = 101
 small_value = 1e-6
 max_inv_temp_val = 3
-sizes = range(3,7)
 quantum_backend = False
+
+spokes = 2
+sizes = range(3,7)
 
 fig_dir = "figures/"
 
@@ -52,7 +54,7 @@ for size in sizes:
 
     for jj in range(steps):
         net, nodes, _, log_net_scale \
-            = ising_network(inv_temps[jj], 0, lattice_shape)
+            = potts_network(lattice_shape, spokes, inv_temps[jj], 0)
         if quantum_backend:
             log_probs[jj], log_norms[jj] = quantum_contraction(nodes.values())
         else:
@@ -62,7 +64,7 @@ for size in sizes:
 
         if inv_temps[jj] == 0: continue
         net, nodes, _, log_net_scale \
-            = ising_network(inv_temps[jj], small_value, lattice_shape)
+            = potts_network(lattice_shape, spokes, inv_temps[jj], small_value)
         if quantum_backend:
             log_prob, log_norm = quantum_contraction(nodes.values())
         else:
