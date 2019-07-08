@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import os, sys
+import os, sys, scipy.optimize
 import numpy as np
 
 from potts_network import potts_network
@@ -25,8 +25,8 @@ small_value = 1e-6
 max_inv_temp_val = 3
 quantum_backend = False
 
-spokes = 3
-sizes = range(3,6)
+spokes = 2
+sizes = range(3,7)
 
 fig_dir = "figures/"
 
@@ -39,8 +39,19 @@ params = { "font.family" : "serif",
                                      r"\usepackage{braket}" ]}
 plt.rcParams.update(params)
 
-inv_temp_crit = np.log(1+np.sqrt(2))
-inv_temps = np.linspace(0, max_inv_temp_val, steps) * inv_temp_crit
+# identify known critical temperatures for different numbers of spokes
+def inv_temp_crit_5_eqn(beta):
+    return np.exp(5/8 * beta) / np.cosh(np.sqrt(5)/8 * beta) - ( 1 + np.sqrt(5) )
+crit_inv_temp_5 = scipy.optimize.fsolve(inv_temp_crit_5_eqn, 1)[0]
+crit_inv_temps = { 2 : np.log(1+np.sqrt(2)),
+                   3 : np.log(1+np.sqrt(3)) * 4/3,
+                   4 : np.log(1+np.sqrt(2)) * 2,
+                   5 : crit_inv_temp_5 }
+
+assert( spokes in crit_inv_temps )
+crit_inv_temp = crit_inv_temps[spokes]
+inv_temps = np.linspace(0, max_inv_temp_val, steps) * crit_inv_temp
+temp_text = r"$\beta / \beta_{\mathrm{crit}}$"
 
 log_Z = np.zeros(steps)
 log_probs = np.zeros(steps)
@@ -73,26 +84,25 @@ for size in sizes:
         log_Z_small_field = log_norm + 1/2 * log_prob + log_net_scale
         sqr_M[jj] = 2 * ( log_Z_small_field - log_Z[jj] ) / small_value**2 / inv_temps[jj]**2
 
-    temp_text = r"$\beta / \beta_{\mathrm{crit}}^{(2)}$"
-    title_text = r"lattice size: ${}$".format(r"\times ".join(["N"]*len(lattice_shape)))
+    title_text = r"$q={}$, $L=({})$".format(spokes, r",".join(["N"]*len(lattice_shape)))
 
     # probability of "acceptance" -- finding all ancillas in |0>
     plt.figure("probs", figsize = figsize)
     plt.title(title_text)
-    plt.semilogy(inv_temps / inv_temp_crit, np.exp(log_probs), ".", label = f"$N={size}$")
+    plt.plot(inv_temps / crit_inv_temp, log_probs / volume, ".", label = f"$N={size}$")
     plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
-    plt.xlim(*tuple(inv_temps[[0,-1]]/inv_temp_crit))
+    plt.xlim(*tuple(inv_temps[[0,-1]]/crit_inv_temp))
     plt.xlabel(temp_text)
-    plt.ylabel("acceptance probability")
+    plt.ylabel(r"$\log p/V$")
     plt.legend(framealpha = 1)
     plt.tight_layout()
 
     # partition function
     plt.figure("log_Z", figsize = figsize)
     plt.title(title_text)
-    plt.plot(inv_temps / inv_temp_crit, log_Z / volume, ".", label = f"$N={size}$")
+    plt.plot(inv_temps / crit_inv_temp, log_Z / volume, ".", label = f"$N={size}$")
     plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
-    plt.xlim(*tuple(inv_temps[[0,-1]]/inv_temp_crit))
+    plt.xlim(*tuple(inv_temps[[0,-1]]/crit_inv_temp))
     plt.ylim(0, plt.gca().get_ylim()[-1])
     plt.xlabel(temp_text)
     plt.ylabel(r"$\log Z/V$")
@@ -104,9 +114,9 @@ for size in sizes:
     energy = - ( log_Z[1:] - log_Z[:-1] ) / ( inv_temps[1:] - inv_temps[:-1] )
     plt.figure("energy", figsize = figsize)
     plt.title(title_text)
-    plt.plot(mid_inv_temps / inv_temp_crit, energy / volume, ".", label = f"$N={size}$")
+    plt.plot(mid_inv_temps / crit_inv_temp, energy / volume, ".", label = f"$N={size}$")
     plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
-    plt.xlim(*tuple(inv_temps[[0,-1]]/inv_temp_crit))
+    plt.xlim(*tuple(inv_temps[[0,-1]]/crit_inv_temp))
     plt.xlabel(temp_text)
     plt.ylabel(r"$\Braket{E}/V$")
     plt.legend(framealpha = 1)
@@ -115,9 +125,9 @@ for size in sizes:
     # squared magnetization density
     plt.figure("mag", figsize = figsize)
     plt.title(title_text)
-    plt.plot(inv_temps / inv_temp_crit, sqr_M / volume**2, ".", label = f"$N={size}$")
+    plt.plot(inv_temps / crit_inv_temp, sqr_M / volume**2, ".", label = f"$N={size}$")
     plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
-    plt.xlim(*tuple(inv_temps[[0,-1]]/inv_temp_crit))
+    plt.xlim(*tuple(inv_temps[[0,-1]]/crit_inv_temp))
     plt.xlabel(temp_text)
     plt.ylabel(r"$\Braket{S^2}/V^2$")
     plt.legend(framealpha = 1)
