@@ -78,8 +78,9 @@ for size in sizes:
         log_Z[jj] = log_norms[jj] + 1/2 * log_probs[jj] + log_net_scale
 
         if inv_temps[jj] == 0: continue
+        small_field = 2/inv_temps[jj] * small_value
         net, nodes, _, log_net_scale \
-            = potts_network(lattice_shape, spokes, inv_temps[jj], small_value)
+            = potts_network(lattice_shape, spokes, inv_temps[jj], small_field)
         bubbler = cubic_bubbler(lattice_shape)
 
         if quantum_backend:
@@ -88,7 +89,7 @@ for size in sizes:
             log_prob, log_norm = classical_contraction(net, nodes, bubbler)
 
         log_Z_small_field = log_norm + 1/2 * log_prob + log_net_scale
-        sqr_M[jj] = 2 * ( log_Z_small_field - log_Z[jj] ) / small_value**2 / inv_temps[jj]**2
+        sqr_M[jj] = 2 * ( log_Z_small_field - log_Z[jj] ) / small_value**2
 
     title_text = r"$q={}$, $L=({})$".format(spokes, r",".join(["N"]*len(lattice_shape)))
 
