@@ -73,7 +73,8 @@ def dist_vec_to_dict(distribution, cutoff = 1e-10):
     if type(distribution) is tf.SparseTensor:
         idx_val_zip = zip(distribution.indices, distribution.values)
         dist_dict = { to_str(idx.numpy()) : val.numpy()
-                      for idx, val in idx_val_zip }
+                      for idx, val in idx_val_zip
+                      if abs(val.numpy()) > cutoff }
         return dist_dict
 
     if type(distribution) is not np.ndarray:
