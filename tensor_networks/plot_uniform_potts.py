@@ -3,6 +3,7 @@
 import os, sys, scipy.optimize
 import numpy as np
 
+from network_methods import cubic_bubbler
 from potts_network import potts_network
 from tensor_contraction import quantum_contraction, classical_contraction
 
@@ -26,7 +27,7 @@ max_inv_temp_val = 3
 quantum_backend = False
 
 spokes = 2
-sizes = range(3,7)
+sizes = range(3,11)
 
 fig_dir = "figures/"
 
@@ -64,22 +65,27 @@ for size in sizes:
     volume = np.prod(lattice_shape)
 
     for jj in range(steps):
+        print(f" {size} : {jj} / {steps}")
         net, nodes, _, log_net_scale \
             = potts_network(lattice_shape, spokes, inv_temps[jj], 0)
+        bubbler = cubic_bubbler(lattice_shape)
+
         if quantum_backend:
-            log_probs[jj], log_norms[jj] = quantum_contraction(nodes.values())
+            log_probs[jj], log_norms[jj] = quantum_contraction(nodes, bubbler)
         else:
-            log_probs[jj], log_norms[jj] = classical_contraction(net, nodes.values())
+            log_probs[jj], log_norms[jj] = classical_contraction(net, nodes, bubbler)
 
         log_Z[jj] = log_norms[jj] + 1/2 * log_probs[jj] + log_net_scale
 
         if inv_temps[jj] == 0: continue
         net, nodes, _, log_net_scale \
             = potts_network(lattice_shape, spokes, inv_temps[jj], small_value)
+        bubbler = cubic_bubbler(lattice_shape)
+
         if quantum_backend:
-            log_prob, log_norm = quantum_contraction(nodes.values())
+            log_prob, log_norm = quantum_contraction(nodes, bubbler)
         else:
-            log_prob, log_norm = classical_contraction(net, nodes.values())
+            log_prob, log_norm = classical_contraction(net, nodes, bubbler)
 
         log_Z_small_field = log_norm + 1/2 * log_prob + log_net_scale
         sqr_M[jj] = 2 * ( log_Z_small_field - log_Z[jj] ) / small_value**2 / inv_temps[jj]**2

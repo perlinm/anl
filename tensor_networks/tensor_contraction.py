@@ -98,7 +98,8 @@ def remove_qubits(state, del_num):
 # returns:
 # (i) the logarithm of the probability of "success", i.e. finding all ancillas in |0>, and
 # (ii) the logarithm of the product of the operator norms of the swallowing operators
-def quantum_contraction(bubbler, print_status = False, dtype = tf.float64):
+def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.float64):
+    if bubbler is None: bubbler = nodes.keys()
     tf_Z = tf.constant([[1,0],[0,-1]], dtype = dtype) # Pauli-Z
     tf_X = tf.constant([[0,1],[1,0]], dtype = dtype) # Pauli-X
 
@@ -107,7 +108,8 @@ def quantum_contraction(bubbler, print_status = False, dtype = tf.float64):
 
     eaten_nodes = set()
     dangling_edges = []
-    for node_idx, node in enumerate(bubbler):
+    for node_idx in bubbler:
+        node = nodes[node_idx]
         inp_edges, inp_op_idx, out_edges, out_op_idx = get_edge_info(node, eaten_nodes)
 
         # identify auxiliary dangling edges that do not participate in swallowing this node
@@ -194,11 +196,13 @@ def quantum_contraction(bubbler, print_status = False, dtype = tf.float64):
 # classical backend to quantum_contraction
 # accepts both a TensorNetwork object and a bubbler as input
 # same outputs as quantum_contraction
-def classical_contraction(net, bubbler):
+def classical_contraction(net, nodes, bubbler = None):
+    if bubbler is None: bubbler = nodes.key()
     log_net_norm = 0
     eaten_nodes = set()
     dangling_edges = []
-    for node_idx, node in enumerate(bubbler):
+    for node_idx in bubbler:
+        node = nodes[node_idx]
         inp_edges, inp_op_idx, out_edges, out_op_idx = get_edge_info(node, eaten_nodes)
 
         # get the dimensions of the input/output spaces
