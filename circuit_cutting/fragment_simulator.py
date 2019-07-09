@@ -162,15 +162,19 @@ def act_gates(circuit, gates, *qubits):
 
 # get a distribution over measurement outcomes for a circuit
 def get_circuit_distribution(circuit, backend_simulator = "statevector_simulator",
-                             num_shots = None):
+                             num_shots = None, return_amplitudes = False):
     assert( backend_simulator == "statevector_simulator" or num_shots is not None )
+    if return_amplitudes: assert( backend_simulator == "statevector_simulator" )
+
     simulator = qs.Aer.get_backend(backend_simulator)
 
     if backend_simulator == "statevector_simulator":
         result = qs.execute(circuit, simulator).result()
         state_vector = result.get_statevector(circuit)
         qubits = len(state_vector).bit_length()-1
-        return tf.constant(abs(state_vector)**2, shape = (2,)*qubits)
+        amplitudes = tf.constant(state_vector, shape = (2,)*qubits)
+        if return_amplitudes: return amplitudes
+        else: return abs(amplitudes)**2
 
     if backend_simulator == "qasm_simulator":
         # identify current registers in the circuit
