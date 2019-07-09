@@ -72,7 +72,7 @@ def cubic_bubbler(lattice_shape):
     def bubbling_order(node):
         return ( adjacency_data[node]["gain"], adjacency_data[node]["dist"] )
 
-    while len(free_nodes) > 0:
+    while free_nodes:
         # determine the numer of dangling edges we would gain
         # from absorbing each adjacent node
         for adj_node, adj_node_data in adjacency_data.items():

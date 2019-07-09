@@ -7,6 +7,7 @@ import tensorflow as tf
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 tf.compat.v1.enable_v2_behavior()
 import tensornetwork as tn
+from tensornetwork.contractors import greedy_contractor
 
 # return an indexed pure state of given number of qubits
 def idx_state(index, qubits, dtype = tf.float64):
@@ -224,7 +225,7 @@ def classical_contraction(net, nodes, bubbler = None):
         dangling_edges = out_edges + dangling_edges
 
     # compute value of network
-    tn.contractors.naive(net)
+    tn.contractors.greedy_contractor.greedy(net)
     log_net_val = np.log(net.get_final_node().tensor.numpy())
 
     log_net_prob = 2 * (log_net_val - log_net_norm)
