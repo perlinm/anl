@@ -48,7 +48,7 @@ crit_inv_temps = { 2 : np.log(1+np.sqrt(2)),
                    4 : np.log(1+np.sqrt(2)) * 2,
                    5 : crit_inv_temp_5 }
 
-assert( spokes in crit_inv_temps )
+assert( spokes in crit_inv_temps.keys() )
 crit_inv_temp = crit_inv_temps[spokes]
 inv_temps = np.linspace(0, max_inv_temp_val, steps) * crit_inv_temp
 temp_text = r"$\beta / \beta_{\mathrm{crit}}$"

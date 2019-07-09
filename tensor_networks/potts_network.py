@@ -8,7 +8,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 tf.compat.v1.enable_v2_behavior()
 import tensornetwork as tn
 
-from network_assemblers import cubic_network
+from network_methods import cubic_network
 
 ##########################################################################################
 # methods for constructing a tensor network that represents the partition function
