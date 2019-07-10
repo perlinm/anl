@@ -13,14 +13,14 @@ from network_methods import cubic_network
 ##########################################################################################
 # methods for constructing a tensor network that represents the partition function
 #   of a classical q-state Potts model on a periodic primitive hypercubic lattice
-# hamiltonian: H = -1/2\sum_{<j,k>} cos(s_j -s_k) - h/2 \sum_j cos(s_j),
+# hamiltonian: H = -\sum_{<j,k>} cos(s_j -s_k) - h \sum_j cos(s_j),
 # with s_j = 2\pi/q \times j; note that the ising model is a 2-state potts model
 ##########################################################################################
 
 # construct a "bare" copy tensor to place at each vertex
 def bare_vertex_tensor(spokes, neighbors, field_over_temp):
     tensor_shape = (spokes,)*neighbors
-    tensor_values = [ np.exp(field_over_temp/2 * np.cos(2*np.pi*idx[0]/spokes))
+    tensor_values = [ np.exp(field_over_temp * np.cos(2*np.pi*idx[0]/spokes))
                       if len(set(idx)) == 1 else 0
                       for idx in np.ndindex(tensor_shape) ]
     return tf.reshape(tensor_values, tensor_shape)
@@ -28,7 +28,7 @@ def bare_vertex_tensor(spokes, neighbors, field_over_temp):
 # compute a link tensor element
 def link_tensor_val(spokes, inv_temp, idx):
     angles = 2*np.pi * np.array(idx) / spokes
-    return np.exp(inv_temp/2 * np.cos(angles[0] - angles[1]))
+    return np.exp(inv_temp * np.cos(angles[0] - angles[1]))
 
 # construct the entire link tensor
 def link_tensor(spokes, inv_temp):

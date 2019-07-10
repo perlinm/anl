@@ -37,16 +37,16 @@ params = { "font.family" : "serif",
            "font.size" : font_size,
            "text.usetex" : True,
            "text.latex.preamble" : [ r"\usepackage{amsmath}",
-                                     r"\usepackage{braket}" ]}
+                                     r"\usepackage{braket}" ] }
 plt.rcParams.update(params)
 
 # identify known critical temperatures for different numbers of spokes
 def inv_temp_crit_5_eqn(beta):
-    return np.exp(5/8 * beta) / np.cosh(np.sqrt(5)/8 * beta) - ( 1 + np.sqrt(5) )
+    return np.exp(5/4 * beta) / np.cosh(np.sqrt(5)/4 * beta) - ( 1 + np.sqrt(5) )
 crit_inv_temp_5 = scipy.optimize.fsolve(inv_temp_crit_5_eqn, 1)[0]
-crit_inv_temps = { 2 : np.log(1+np.sqrt(2)),
-                   3 : np.log(1+np.sqrt(3)) * 4/3,
-                   4 : np.log(1+np.sqrt(2)) * 2,
+crit_inv_temps = { 2 : np.log(1+np.sqrt(2)) / 2,
+                   3 : np.log(1+np.sqrt(3)) * 2/3,
+                   4 : np.log(1+np.sqrt(2)),
                    5 : crit_inv_temp_5 }
 
 assert( spokes in crit_inv_temps.keys() )
@@ -78,7 +78,7 @@ for size in sizes:
         log_Z[jj] = log_norms[jj] + 1/2 * log_probs[jj] + log_net_scale
 
         if inv_temps[jj] == 0: continue
-        small_field = 2/inv_temps[jj] * small_value
+        small_field = small_value / inv_temps[jj]
         net, nodes, _, log_net_scale \
             = potts_network(lattice_shape, spokes, inv_temps[jj], small_field)
         bubbler = cubic_bubbler(lattice_shape)

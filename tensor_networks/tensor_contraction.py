@@ -225,6 +225,7 @@ def classical_contraction(net, nodes, bubbler = None):
         dangling_edges = out_edges + dangling_edges
 
     # compute value of network
+    # tn.contractors.naive(net)
     tn.contractors.greedy_contractor.greedy(net)
     log_net_val = np.log(net.get_final_node().tensor.numpy())
 
