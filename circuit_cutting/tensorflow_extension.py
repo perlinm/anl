@@ -31,6 +31,10 @@ def tf_sparse_sub(self, other):
     return self + ( -1 * other )
 tf.SparseTensor.__sub__ = tf_sparse_sub
 
+def tf_sparse_truediv(self, other):
+    return 1/other * self
+tf.SparseTensor.__truediv__ = tf_sparse_truediv
+
 def tf_outer_product(tensor_a, tensor_b):
     if type(tensor_a) is not tf.SparseTensor:
         return tf.tensordot(tensor_a, tensor_b, axes = 0)

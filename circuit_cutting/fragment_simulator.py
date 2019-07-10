@@ -24,6 +24,9 @@ SIC, ZXY = "SIC", "ZXY" # define these to protect against typos
 state_prep_basis = SIC
 stitching_basis = SIC
 
+# ZXY basis to use for statevector simulations
+basis_ZXY_statevector = [ "-Z", "+Z", "+X", "+Y" ]
+
 # define state vectors for SIC basis
 state_vecs_SIC = [ ( +1, +1, +1 ), ( +1, -1, -1 ), ( -1, +1, -1 ), ( -1, -1, +1 ) ]
 state_vecs_SIC = { f"SIC-{jj}" : tuple( np.array(vec) / np.linalg.norm(vec) )
@@ -53,10 +56,14 @@ def prep_gate(state):
     return qs.extensions.standard.U3Gate(theta, phi, 0)
 
 # gates to measure in different bases
-basis_measurement_gates = { basis : prep_gate(f"+{basis}").inverse()
-                            for basis in [ "Z", "X", "Y" ] }
+basis_gates = { basis : prep_gate(f"+{basis}").inverse()
+                for basis in [ "Z", "X", "Y" ] }
 
 # class for a conditional distribution function
+# TODO: add flexibility for different init/exit bases
+#       nominal plan: explicitly allow for [I,+Z,+X,+Y], [-Z,+Z,+X,+Y] and [SIC-n] bases
+#       optional: allow for *any* informationally-complete basis
+#       we will probably spin off the conditional_distribution into a separate file
 class conditional_distribution:
 
     # initialize an empty conditional distribution function
@@ -73,7 +80,7 @@ class conditional_distribution:
     def items(self):
         return self.dist_dict.items()
 
-    # add data to the conditional distribution function
+    # add data to the conditional distribution object
     def add(self, init_keys, exit_keys, dist):
         key = ( frozenset(init_keys), frozenset(exit_keys) )
         try:
@@ -89,8 +96,7 @@ class conditional_distribution:
         try: return self.dist_dict[state_preps, measure_ops]
         except: None
 
-        # otherwise, use available data to compute the distribution function
-        #   for the given conditions
+        # use available data to compute the distribution function for the given conditions
 
         for wire, op in state_preps:
             vacancy = state_preps.difference({(wire,op)})
@@ -99,7 +105,7 @@ class conditional_distribution:
             if state_prep_basis == SIC:
 
                 if op == "I":
-                    return dist((0,0,0)) * 2 # I = twice the maximally mixed state
+                    return dist((0,0,0)) * 2 # I = 2 * ( maximally mixed state )
 
                 if op in state_vecs_ZXY.keys():
                     return dist(state_vecs_ZXY[op])
@@ -121,6 +127,7 @@ class conditional_distribution:
                 if type(op) is tuple:
                     assert( len(op) == 3 )
                     bases = [ "+Z", "+X", "+Y" ]
+                    init_keys, exit_keys = zip(*self.dist_dict.keys())
                     dist_ZXY = sum( val * dist(basis) for val, basis in zip(op, bases) )
                     return dist_ZXY + dist("I") * ( 1 - sum(op) ) / 2
 
@@ -162,8 +169,7 @@ def act_gates(circuit, gates, *qubits):
 
 # get a distribution over measurement outcomes for a circuit
 def get_circuit_distribution(circuit, backend_simulator = "statevector_simulator",
-                             num_shots = None, return_amplitudes = False):
-    assert( backend_simulator == "statevector_simulator" or num_shots is not None )
+                             return_amplitudes = False, dtype = tf.float64, **kwargs):
     if return_amplitudes: assert( backend_simulator == "statevector_simulator" )
 
     simulator = qs.Aer.get_backend(backend_simulator)
@@ -186,25 +192,34 @@ def get_circuit_distribution(circuit, backend_simulator = "statevector_simulator
         name_prefix = "_".join( register.prefix for register in all_registers )
         for rr, register in enumerate(qubit_registers):
             bits = len(register)
-            name = name_prefix + f"_{rr}"
+            name = name_prefix + f"_c{rr}"
             measurement_register = qs.ClassicalRegister(bits, name)
             circuit.add_register(measurement_register)
             circuit.measure(register, measurement_register)
 
         # simulate!
-        result = qs.execute(circuit, simulator, shots = num_shots).result()
+        result = qs.execute(circuit, simulator, **kwargs).result()
         state_counts = result.get_counts(circuit)
 
         # collect results into a sparse tensor
         indices = [ tuple( int(bit) for bit in state ) for state in state_counts.keys() ]
         values = list(state_counts.values())
         dense_shape = (2,)*len(circuit.clbits)
-        sparse_dist = tf.SparseTensor(indices, values, dense_shape) / num_shots
-        return tf.sparse.reorder(sparse_dist)
+        sparse_counts = tf.SparseTensor(indices, values, dense_shape)
+        return tf.cast(tf.sparse.reorder(sparse_counts), dtype) / kwargs["shots"]
 
     else:
         print("backend not supported:", backend_simulator)
         return None
+
+def dist_terms_ZXY_statevector(state):
+    if state == "+Z": return [ "+Z", "I" ]
+    if state == "-Z": return [ "I" ]
+    else: return [ state ]
+
+def dist_terms_ZXY_shots(state):
+    if state[0] == "-": return [ "I" ]
+    else: return [ state, "I" ]
 
 # get a distributions over measurement outcomes for a circuit fragment
 # accepts a list of fragments, and lists of wires (i.e. in that fragment) that are
@@ -218,136 +233,142 @@ def get_circuit_distribution(circuit, backend_simulator = "statevector_simulator
 #     conditional on the exit-wire measurement outcomes > }
 def get_fragment_distribution(fragment, init_wires = None, exit_wires = None,
                               backend_simulator = "statevector_simulator",
-                              num_shots = None):
-    if backend_simulator == "statevector_simulator":
-        tf_module = tf
-    else:
-        tf_module = tf.sparse
+                              dtype = tf.float64, **kwargs):
+    # decide what states to prepare on each individual init wire
+    if state_prep_basis == SIC:
+        qubit_init_states = state_vecs_SIC.keys()
+    else: # state_prep_basis == ZXY
+        if backend_simulator != "statevector_simulator":
+            qubit_init_states = state_vecs_ZXY.keys()
+        else:
+            qubit_init_states = basis_ZXY_statevector
 
-    if init_wires: # if we have wires to initialize into various states
+    # identify the axes we will project out for the exit wires
+    exit_axes = { wire : -fragment.qubits.index(wire)-1 for wire in exit_wires }
 
-        # pick the first init wire for state initialization
-        init_wire, other_wires = init_wires[0], init_wires[1:]
+    # sort exit wires in reverse order from their indices
+    exit_wires = sorted(exit_wires, key = lambda wire : exit_axes[wire] )
 
-        # decide what states to prepare
+    # initialize an empty conditional distribution over measurement outcomes
+    frag_dist = conditional_distribution()
+
+    # for every choice of states prepared on all on init wires
+    for init_states in set_product(qubit_init_states, repeat = len(init_wires)):
         if state_prep_basis == SIC:
-            init_states = state_vecs_SIC.keys()
-        else: # state_prep_basis == ZXY
-            init_states = state_vecs_ZXY.keys()
+            init_dist = frag_dist
+        else:
+            init_dist = conditional_distribution()
 
-        # build the overall conditional distribution over measurement outcomes
-        frag_dist = conditional_distribution()
-        for state in init_states: # for each state we will prepare
-            if ( backend_simulator == "statevector_simulator"
-                 and state_prep_basis == ZXY
-                 and state in [ "-X", "-Y" ] ):
+        if backend_simulator != "statevector_simulator":
+            init_shots = kwargs["shots"]
+            if state_prep_basis != SIC:
+                init_shots /= 3**sum( state[0] == "-" for state in init_states )
+
+        # build circuit with the "input" states prepared appropriately
+        init_keys = frozenset(zip(init_wires, init_states))
+        prep_circuits = [ act_gates(fragment, prep_gate(state), wire)
+                          for wire, state in init_keys ]
+        init_circuit = reduce(lambda x, y : x + y, prep_circuits + [ fragment ])
+
+        if backend_simulator == "statevector_simulator":
+
+            # get the state vector for the circuit (i.e. with amplitudes)
+            all_amplitudes \
+                = get_circuit_distribution(init_circuit, backend_simulator,
+                                           return_amplitudes = True, dtype = dtype)
+
+            # for every set of measurement outcomes on all on exit wires
+            for exit_states in set_product(basis_ZXY_statevector,
+                                           repeat = len(exit_wires)):
+
+                # project onto the given measured states on exit wires
+                projected_amplitudes = deepcopy(all_amplitudes)
+                for exit_wire, exit_state in zip(exit_wires, exit_states):
+                    exit_vec = prep_gate(exit_state).to_matrix()[:,0].conj()
+                    axes = [ [ 0 ], [ exit_axes[exit_wire] ] ]
+                    projected_amplitudes \
+                        = tf.tensordot(exit_vec, projected_amplitudes, axes = axes)
+
+                # probability distribution on non-exit output wires
+                dist = abs(projected_amplitudes)**2
+
+                exit_terms = [ dist_terms_ZXY_statevector(state)
+                               for state in exit_states ]
+                for exit_ops in set_product(*exit_terms):
+                    exit_keys = zip(exit_wires, exit_ops)
+                    init_dist.add(init_keys, exit_keys, dist)
+
+        else: # backend_simulator != "statevector_simulator"
+
+            # for every choice of measurement bases on all on exit wires
+            for exit_bases in set_product(basis_gates.keys(), repeat = len(exit_wires)):
+
+                # build a circuit to measure in the correct bases
+                measurement_circuit = [ act_gates(fragment, basis_gates[basis], wire)
+                                        for wire, basis in zip(exit_wires, exit_bases) ]
+                circuit = reduce(lambda x, y : x + y,
+                                 [ init_circuit ] + measurement_circuit)
+
+                # if we are simulating with initial states polarized in - Z/X/Y
+                # then we are actually collecting data for an insertion of I,
+                # so we only need a third of the number of shots (per such state)
+                total_shots \
+                    = init_shots / 3**sum( state[0] == "-" for state in init_states )
+
+                # get probability distribution over measurement outcomes
+                full_dist = get_circuit_distribution(circuit, backend_simulator,
+                                                     dtype = dtype, shots = int(total_shots))
+
+                # project onto given exit-wire measurement outcomes
+                for exit_bits in set_product(range(2), repeat = len(exit_wires)):
+                    exit_states = [ ( "+" if bit == 0 else "-" ) + basis
+                                    for bit, basis in zip(exit_bits, exit_bases) ]
+
+                    projected_dist = deepcopy(full_dist)
+                    for wire, bit_state in zip(exit_wires, exit_bits):
+                        qubits = len(projected_dist.shape)
+                        begin = [ 0 ] * qubits
+                        size = [ 2 ] * qubits
+                        begin[exit_axes[wire]] = bit_state
+                        size[exit_axes[wire]] = 1
+                        projected_dist = tf.sparse.slice(projected_dist, begin, size)
+                        projected_dist = tf.sparse.reshape(projected_dist, (2,)*(qubits-1))
+
+                    # loop over all assignments of + Z/X/Y and I at exit wires
+                    exit_terms = [ dist_terms_ZXY_shots(state) for state in exit_states ]
+                    for exit_states in set_product(*exit_terms):
+                        # divide distribution by 3 for each identity operator (I)
+                        #   to average over measurements in 3 different bases
+                        iden_fac = 3**sum( state == "I" for state in exit_states )
+                        exit_keys = zip(exit_wires, exit_states)
+                        init_dist.add(init_keys, exit_keys, projected_dist / iden_fac)
+
+            ### end construction of init_dist
+
+        if init_dist is frag_dist: continue
+
+        for ( init_keys, exit_keys ), dist in init_dist.items():
+            if init_keys == frozenset():
+                frag_dist.add(init_keys, exit_keys, dist)
                 continue
 
-            # construct the circuit to prepare the state we want
-            prep_circuit = act_gates(fragment, prep_gate(state), init_wire)
+            if backend_simulator == "statevector_simulator":
+                init_terms = [ dist_terms_ZXY_statevector(state)
+                               for state in init_states ]
+                for init_ops in set_product(*init_terms):
+                    init_keys = zip(init_wires, init_ops)
+                    frag_dist.add(init_keys, exit_keys, dist)
 
-            # if we are simulating a state polarized in -Z, -X, or -Y,
-            # then we are actually collecting data for an insertion of I,
-            # so we only need a third of the number of shots
-            if num_shots is not None and state[0] == "-":
-                state_shots = num_shots // 3
-            else: # <-- True in most cases
-                state_shots = num_shots
+            else: # backend_simulator != "statevector_simulator"
 
-            # get the distribution over measurement outcomes for each prepared state
-            init_frag_dist = get_fragment_distribution(prep_circuit + fragment,
-                                                       other_wires, exit_wires,
-                                                       backend_simulator, state_shots)
+                init_terms = [ dist_terms_ZXY_shots(state)
+                               for state in init_states ]
+                for init_ops in set_product(*init_terms):
+                    iden_fac = 3**sum( op == "I" for op in init_ops )
+                    init_keys = zip(init_wires, init_ops)
+                    frag_dist.add(init_keys, exit_keys, dist / iden_fac)
 
-            # add to our collection of conditional distributions,
-            # indexing init_frag_dist by state that we prepared
-            for all_keys, dist in init_frag_dist.items():
-                old_init_keys, exit_keys = all_keys
-                init_keys = lambda state : old_init_keys.union({ ( init_wire, state ) })
-
-                # if we simulated in the SIC basis,
-                # then simply add to our distribution of outcomes for this fragment
-                if state_prep_basis == SIC:
-                    frag_dist.add(init_keys(state), exit_keys, dist)
-
-                # otherwise, collect outcomes for insertion of I, +Z, +X, and +Y
-                else: # state_prep_basis == ZXY
-
-                    # store all distributions for +Z, +X, and +Y directly
-                    if state[0] == "+":
-                        frag_dist.add(init_keys(state), exit_keys, dist)
-
-                    # if we used a statevector simulator,
-                    # then build an insertion of an identity via (I) = (+Z) + (-Z)
-                    if backend_simulator == "statevector_simulator":
-                        if state[1] == "Z":
-                            frag_dist.add(init_keys("I"), exit_keys, dist)
-
-                    # if we did not use a backend simulator,
-                    # then add data from all prepared states to the distribution for I
-                    # note: divide by 3 to average over preparation of states in 3 bases
-                    else: # backend_simulator != "statevector_simulator"
-                        frag_dist.add(init_keys("I"), exit_keys, dist/3)
-
-        return frag_dist
-
-    if exit_wires: # if we have wires to measure in various bases
-
-        # sort exit wires by index to ensure proper deletion of axes
-        #   for example, if we wish to delete axes 0 and 3,
-        #   then we need to delete axis 3 before deleting axis 0,
-        #   as otherwise the bit at axis 3 will change position
-        exit_wires = sorted(exit_wires, key = lambda wire : fragment.qubits.index(wire) )
-
-        # pick the first exit wire for measurement
-        exit_wire, other_wires = exit_wires[0], exit_wires[1:]
-
-        # determine axis to delete (i.e. project out) when constructing
-        # a distribution over all measurement outcomes that is conditional
-        # on a particular measurement outcome
-        del_axis = -fragment.qubits.index(exit_wire)-1
-
-        # build the overall conditional distribution over measurement outcomes
-        frag_dist = conditional_distribution()
-        for basis, basis_gates in basis_measurement_gates.items(): # for each measurement basis
-
-            # construct the circuit to measure in the desired basis
-            apnd_circuit = act_gates(fragment, basis_gates, exit_wire)
-
-            # get the conditional distribution for each measurement basis
-            exit_frag_dist = get_fragment_distribution(fragment + apnd_circuit,
-                                                       init_wires, other_wires,
-                                                       backend_simulator, num_shots)
-
-            # add to our collection of conditional distributions, indexing exit_frag_dist
-            # by the measured basis and measurement outcome on the exit wire
-            for all_keys, dist in exit_frag_dist.items():
-                init_keys, old_exit_keys = all_keys
-                exit_keys = lambda state : old_exit_keys.union({ ( exit_wire, state ) })
-
-                outcome_dist = {}
-                for outcome, bit_state in [ ( "+", 0 ), ( "-", 1 ) ]:
-                    # project onto a given exit-wire measurement outcome
-                    begin = [0]*len(dist.shape)
-                    size = [2]*len(dist.shape)
-                    begin[del_axis] = bit_state
-                    size[del_axis] = 1
-                    outcome_dist[outcome] = tf_module.slice(dist, begin, size)
-                    outcome_dist[outcome] = tf_module.reshape(outcome_dist[outcome],
-                                                              (2,)*(len(dist.shape)-1))
-
-                # collect conditional distribution on a "+" outcome, ...
-                frag_dist.add(init_keys, exit_keys(f"+{basis}"), outcome_dist["+"])
-
-                # ... and a conditional distribution on measuring the identity operator I
-                # note: diveded by 3 to average over measurements in 3 different bases
-                frag_dist.add(init_keys, exit_keys("I"), sum(outcome_dist.values())/3)
-
-        return frag_dist
-
-    # if no init_frag_wires and no exit_frag_wires
-    distribution = get_circuit_distribution(fragment, backend_simulator, num_shots)
-    return conditional_distribution(distribution)
+    return frag_dist
 
 # identify initialization and exit wires for each fragment
 # accepts dictionary of stitches and total number of fragments
@@ -372,12 +393,13 @@ def sort_init_exit_wires(frag_stitches, num_fragments):
 # returns a list of conditional probability distributions over measurement outcomes
 def get_fragment_distributions(fragments, frag_stitches,
                                backend_simulator = "statevector_simulator",
-                               num_shots = None):
+                               dtype = tf.float64, **kwargs):
     # collect lists of initialization / exit wires for all fragments
     init_wires, exit_wires = sort_init_exit_wires(frag_stitches, len(fragments))
 
     # compute conditional distributions over measurement outcomes for all fragments
-    return [ get_fragment_distribution(ff, ii, ee, backend_simulator, num_shots)
+    return [ get_fragment_distribution(ff, ii, ee, backend_simulator,
+                                       dtype = dtype, **kwargs)
              for ff, ii, ee in zip(fragments, init_wires, exit_wires) ]
 
 ##########################################################################################
@@ -412,10 +434,10 @@ def rearranged_wires(distribution, old_wire_order, new_wire_order, wire_map = No
 def simulate_and_combine(fragments, frag_stitches,
                          frag_wiring = None, wire_order = None,
                          backend_simulator = "statevector_simulator",
-                         num_shots = None, dtype = tf.float64):
+                         dtype = tf.float64, **kwargs):
     # get conditional probability distributions for of all circuit fragments
     frag_dists = get_fragment_distributions(fragments, frag_stitches,
-                                            backend_simulator, num_shots)
+                                            backend_simulator, dtype, **kwargs)
 
     # identify the order of wires in a combined/reconstructed distribution over outcomes
     combined_wire_order = [ ( frag_idx, qubit )

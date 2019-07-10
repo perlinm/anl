@@ -93,22 +93,14 @@ def distribution_fidelity(dist_0, dist_1):
     if type(dist_1) is tf.SparseTensor and type(dist_0) is not tf.SparseTensor:
         return distribution_fidelity(dist_1, dist_0)
 
-    if type(dist_0) is tf.SparseTensor and type(dist_1) is tf.SparseTensor:
-        idx_0 = { tuple(idx) : jj for jj, idx in enumerate(dist_0.indices.numpy()) }
-        idx_1 = { tuple(idx) : jj for jj, idx in enumerate(dist_1.indices.numpy()) }
-        return sum( np.sqrt(complex(dist_0.values[idx_0[tuple(idx)]]) *
-                            complex(dist_1.values[idx_1[tuple(idx)]]))
-                    for idx in idx_0.keys() if idx in idx_1.keys() )
-
-    return sum( np.sqrt(complex(dist_0[idx]) * complex(dist_1[idx]))
-                for idx in np.ndindex(tuple(dist_0.shape)) )
+    return tf.reduce_sum(tf.sqrt(tf.math.multiply(dist_0, dist_1))).numpy()
 
 
 circ_dist = get_circuit_distribution(circ)
 
-# combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits)
-combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits,
-                                     backend_simulator = "qasm_simulator", num_shots = 1000)
+combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits)
+# combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits,
+                                     # backend_simulator = "qasm_simulator", shots = 1000)
 
 
 print()
