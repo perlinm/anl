@@ -48,7 +48,7 @@ def fused_vertex_tensor(neighbors, spokes, inv_temp, field):
     return T_V
 
 # construct tensor network on a periodic primitive hypercubic lattice
-def potts_network(lattice_shape, spokes, inv_temp, field):
+def potts_network(lattice_shape, spokes, inv_temp, field = 0):
     tensor = fused_vertex_tensor(2*len(lattice_shape), spokes, inv_temp, field)
     tensor_norm = tf.norm(tensor)
     normed_tensor = tensor / tensor_norm

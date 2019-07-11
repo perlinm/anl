@@ -73,7 +73,7 @@ for size in sizes:
     for jj in range(steps):
         print(f" {size} : {jj} / {steps}")
         net, nodes, _, log_net_scale \
-            = potts_network(lattice_shape, spokes, inv_temps[jj], 0)
+            = potts_network(lattice_shape, spokes, inv_temps[jj])
         bubbler = cubic_bubbler(lattice_shape)
 
         if quantum_backend:
