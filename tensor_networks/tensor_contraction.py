@@ -108,13 +108,13 @@ def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.
         # identify auxiliary dangling edges that do not participate in swallowing this node
         aux_edges = [ edge for edge in dangling_edges if edge not in inp_edges ]
 
-        # identify the numbers of different kinds of qubits
-        inp_num = len(inp_edges) # number of input qubits to the swallowing operator
-        out_num = len(out_edges) # number of output qubits to the swallowing operator
-        aux_num = len(aux_edges) # number of auxiliary (bystander) qubits
+        # identify the numbers of different kinds of subsystems
+        inp_num = len(inp_edges) # number of input subsystems to the swallowing operator
+        out_num = len(out_edges) # number of output subsystems to the swallowing operator
+        aux_num = len(aux_edges) # number of auxiliary (bystander) subsystems
         assert( aux_num == len(state.shape) - inp_num ) # sanity check
 
-        # rearrange the order of qubits in the state
+        # rearrange the order of subsystems in the state
         inp_state_idx = [ dangling_edges.index(edge) for edge in inp_edges ]
         aux_state_idx = [ dangling_edges.index(edge) for edge in aux_edges ]
         state = tf.transpose(state, inp_state_idx + aux_state_idx)
@@ -138,7 +138,7 @@ def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.
         vals_D, mat_V_L, mat_V_R = tf.linalg.svd(swallow_matrix)
 
         # convert isometries into unitaries on an extension of the domain
-        #   achieved by attaching trivial (|0>) states of extra qubits
+        #   achieved by attaching trivial ancillary subsystems (i.e. in |0>)
         mat_V_L = to_unitary(mat_V_L)
         mat_V_R = to_unitary(mat_V_R)
 
@@ -156,7 +156,7 @@ def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.
         state = tf.tensordot(tf.transpose(mat_V_R, conjugate = True), state, axes = [[1],[0]])
         state = tf.reshape(state, inp_dims + aux_dims)
 
-        # if we lose qubits upon swallowing this operator, then project them out now
+        # if we lose subsystems upon swallowing this operator, then project them out now
         state = remove_subsystem(state, max(0, inp_num - out_num))
 
         # attach ancilla, act on the state by the unitary U_D, and project out the ancilla
@@ -165,7 +165,7 @@ def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.
         state = tf.tensordot(mat_U_D, state, axes = [ [1,3], [0,1] ])
         state = remove_subsystem(state, 1)
 
-        # if we gain qubits upon swallowing this tensor, then attach them now
+        # if we gain subsystems upon swallowing this tensor, then attach them now
         if out_dim > inp_dim:
             new_dims = list(out_dims)
             for dim in inp_dims:
