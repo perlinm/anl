@@ -202,6 +202,7 @@ def classical_contraction(net, nodes, bubbler = None):
     log_net_norm = 0
     eaten_nodes = set()
     dangling_edges = []
+
     for node_idx in bubbler:
         node = nodes[node_idx]
         inp_edges, inp_op_idx, out_edges, out_op_idx = get_edge_info(node, eaten_nodes)
@@ -214,9 +215,13 @@ def classical_contraction(net, nodes, bubbler = None):
         # get the tensor associated with this node, reordering axes as necessary
         swallow_tensor = tf.transpose(node.get_tensor(), out_op_idx + inp_op_idx)
         swallow_matrix = tf.reshape(swallow_tensor, (out_dim, inp_dim))
-        vals_D, _, _ = tf.linalg.svd(swallow_matrix)
-        norm_D = max(vals_D.numpy())
-        log_net_norm += np.log(vals_D.numpy().max())
+        vals_D = tf.linalg.svd(swallow_matrix)[0].numpy()
+        ### the tensorflow's svd algorithm sometimes gives a segfault...
+        ### if a segfault occur, use numpy's svd algorithm instead
+        # from numpy.linalg import svd
+        # _, vals_D, _ = svd(swallow_matrix.numpy())
+        norm_D = max(vals_D)
+        log_net_norm += np.log(vals_D.max())
 
         # add to our list of "eaten" nodes, update the list of dangling edges
         eaten_nodes.add(node)
@@ -225,8 +230,10 @@ def classical_contraction(net, nodes, bubbler = None):
         dangling_edges = out_edges + dangling_edges
 
     # compute value of network
-    # tn.contractors.naive(net)
     tn.contractors.greedy_contractor.greedy(net)
+    ### although the greedy contractor is generally faster, it sometimes
+    ### runs out of memory in cases when the naive contractor does not...
+    # tn.contractors.naive(net)
     log_net_val = np.log(net.get_final_node().tensor.numpy())
 
     log_net_prob = 2 * (log_net_val - log_net_norm)
