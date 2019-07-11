@@ -18,11 +18,11 @@ def idx_state(index, shape, dtype = tf.float64):
 def zero_state(shape = (), dtype = tf.float64):
     return idx_state(0, shape, dtype)
 
-# attach (remove) a subsystem to (from) a state
-def attach_subsystem(state, shape):
+# attach (remove) subsystems to (from) a state
+def attach_subsystems(state, shape):
     if len(shape) == 0: return state
     return tf.tensordot(zero_state(shape, dtype = state.dtype), state, axes = 0)
-def remove_subsystem(state, del_num):
+def remove_subsystems(state, del_num):
     if del_num <= 0: return state
     shape = state.get_shape()[:del_num]
     return tf.tensordot(zero_state(shape, dtype = state.dtype), state,
@@ -157,20 +157,20 @@ def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.
         state = tf.reshape(state, inp_dims + aux_dims)
 
         # if we lose subsystems upon swallowing this operator, then project them out now
-        state = remove_subsystem(state, max(0, inp_num - out_num))
+        state = remove_subsystems(state, max(0, inp_num - out_num))
 
         # attach ancilla, act on the state by the unitary U_D, and project out the ancilla
         state = tf.reshape(state, (min(inp_dim,out_dim),) + aux_dims)
-        state = attach_subsystem(state, (2,))
+        state = attach_subsystems(state, (2,))
         state = tf.tensordot(mat_U_D, state, axes = [ [1,3], [0,1] ])
-        state = remove_subsystem(state, 1)
+        state = remove_subsystems(state, 1)
 
         # if we gain subsystems upon swallowing this tensor, then attach them now
         if out_dim > inp_dim:
             new_dims = list(out_dims)
             for dim in inp_dims:
                 new_dims.remove(dim)
-            state = attach_subsystem(state, new_dims)
+            state = attach_subsystems(state, new_dims)
 
         # rotate back from the left-diagonal basis of the swallowing operator
         state = tf.reshape(state, (out_dim,) + aux_dims)
