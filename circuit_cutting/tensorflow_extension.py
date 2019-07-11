@@ -42,8 +42,11 @@ def tf_outer_product(tensor_a, tensor_b):
     if type(tensor_a) is not tf.SparseTensor:
         return tf.tensordot(tensor_a, tensor_b, axes = 0)
     else:
-        indices = [ tf.concat([ idx_a, idx_b ], 0)
-                    for idx_a, idx_b in set_product(tensor_a.indices, tensor_b.indices) ]
-        values =  np.outer(tensor_a.values, tensor_b.values).flatten()
+        index_iterator = set_product(tensor_a.indices.numpy(),
+                                     tensor_b.indices.numpy())
+        indices = [ np.concatenate(( idx_a, idx_b ))
+                    for idx_a, idx_b in index_iterator ]
+        values = np.empty(( len(tensor_a.values), len(tensor_b.values) ))
+        values = np.outer(tensor_a.values, tensor_b.values, values).flatten()
         dense_shape = tf.concat([ tensor_a.dense_shape, tensor_b.dense_shape ], 0)
         return tf.SparseTensor(indices, values, dense_shape)
