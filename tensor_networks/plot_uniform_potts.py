@@ -28,6 +28,7 @@ quantum_backend = False
 
 spokes = 2
 sizes = range(3,11)
+dims = 2 # dimension of lattice
 
 fig_dir = "figures/"
 
@@ -49,10 +50,15 @@ crit_inv_temps = { 2 : np.log(1+np.sqrt(2)) / 2,
                    4 : np.log(1+np.sqrt(2)),
                    5 : crit_inv_temp_5 }
 
-assert( spokes in crit_inv_temps.keys() )
-crit_inv_temp = crit_inv_temps[spokes]
+if spokes in crit_inv_temps.keys():
+    crit_inv_temp = crit_inv_temps[spokes]
+    temp_text = r"$\beta / \beta_{{\mathrm{{crit}}}}^{{({})}}$".format(spokes)
+else:
+    crit_inv_temp = 1
+    temp_text = r"$\beta$"
+
+title_text = r"$q={}$, $L=({})$".format(spokes, r",".join(["N"]*dims))
 inv_temps = np.linspace(0, max_inv_temp_val, steps) * crit_inv_temp
-temp_text = r"$\beta / \beta_{\mathrm{crit}}$"
 
 log_Z = np.zeros(steps)
 log_probs = np.zeros(steps)
@@ -61,7 +67,7 @@ sqr_M = np.zeros(steps)
 for size in sizes:
     print(f"size: {size}")
 
-    lattice_shape = (size,)*2
+    lattice_shape = (size,)*dims
     volume = np.prod(lattice_shape)
 
     for jj in range(steps):
@@ -91,58 +97,44 @@ for size in sizes:
         log_Z_small_field = log_norm + 1/2 * log_prob + log_net_scale
         sqr_M[jj] = 2 * ( log_Z_small_field - log_Z[jj] ) / small_value**2
 
-    title_text = r"$q={}$, $L=({})$".format(spokes, r",".join(["N"]*len(lattice_shape)))
-
     # probability of "acceptance" -- finding all ancillas in |0>
-    plt.figure("probs", figsize = figsize)
-    plt.title(title_text)
+    plt.figure("probs")
     plt.plot(inv_temps / crit_inv_temp, log_probs / volume, ".", label = f"$N={size}$")
-    plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
-    plt.xlim(*tuple(inv_temps[[0,-1]]/crit_inv_temp))
-    plt.xlabel(temp_text)
     plt.ylabel(r"$\log p/V$")
-    plt.legend(framealpha = 1)
-    plt.tight_layout()
 
     # partition function
-    plt.figure("log_Z", figsize = figsize)
-    plt.title(title_text)
+    plt.figure("log_Z")
     plt.plot(inv_temps / crit_inv_temp, log_Z / volume, ".", label = f"$N={size}$")
-    plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
-    plt.xlim(*tuple(inv_temps[[0,-1]]/crit_inv_temp))
-    plt.ylim(0, plt.gca().get_ylim()[-1])
-    plt.xlabel(temp_text)
     plt.ylabel(r"$\log Z/V$")
-    plt.legend(framealpha = 1)
-    plt.tight_layout()
+    plt.ylim(0, plt.gca().get_ylim()[-1])
 
     # energy density
     mid_inv_temps = ( inv_temps[1:] + inv_temps[:-1] ) / 2
     energy = - ( log_Z[1:] - log_Z[:-1] ) / ( inv_temps[1:] - inv_temps[:-1] )
     plt.figure("energy", figsize = figsize)
-    plt.title(title_text)
     plt.plot(mid_inv_temps / crit_inv_temp, energy / volume, ".", label = f"$N={size}$")
-    plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
-    plt.xlim(*tuple(inv_temps[[0,-1]]/crit_inv_temp))
-    plt.xlabel(temp_text)
     plt.ylabel(r"$\Braket{E}/V$")
-    plt.legend(framealpha = 1)
-    plt.tight_layout()
 
     # squared magnetization density
-    plt.figure("mag", figsize = figsize)
-    plt.title(title_text)
+    plt.figure("mag")
     plt.plot(inv_temps / crit_inv_temp, sqr_M / volume**2, ".", label = f"$N={size}$")
-    plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
+    plt.ylabel(r"$\Braket{S^2}/V^2$")
+
+# set miscellaneous figure properties
+for fig_name in plt.get_figlabels():
+    fig = plt.figure(fig_name)
+    fig.set_size_inches(figsize)
+    plt.title(title_text)
     plt.xlim(*tuple(inv_temps[[0,-1]]/crit_inv_temp))
     plt.xlabel(temp_text)
-    plt.ylabel(r"$\Braket{S^2}/V^2$")
+    if spokes in crit_inv_temps.keys():
+        plt.axvline(1, color = "gray", linestyle = "--", linewidth = 1)
     plt.legend(framealpha = 1)
     plt.tight_layout()
 
 if save_figures:
     if not os.path.isdir(fig_dir): os.mkdir(fig_dir)
-    for fig_name in [ "probs", "log_Z", "energy", "mag" ]:
+    for fig_name in plt.get_figlabels():
         plt.figure(fig_name)
         plt.savefig(fig_dir + fig_name + f"_{spokes}_{size}.pdf")
 
