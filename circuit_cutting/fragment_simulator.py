@@ -303,17 +303,18 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None,
             # for every choice of measurement bases on all on exit wires
             for exit_bases in set_product(basis_gates.keys(), repeat = len(exit_wires)):
 
-                # build a circuit to measure in the correct bases
-                measurement_circuit = [ act_gates(fragment, basis_gates[basis], wire)
-                                        for wire, basis in zip(exit_wires, exit_bases) ]
-                circuit = reduce(lambda x, y : x + y,
-                                 [ init_circuit ] + measurement_circuit)
-
                 # if we are simulating with initial states polarized in - Z/X/Y
                 # then we are actually collecting data for an insertion of I,
                 # so we only need a third of the number of shots (per such state)
                 total_shots \
                     = init_shots / 3**sum( state[0] == "-" for state in init_states )
+                if total_shots < 1: continue
+
+                # build a circuit to measure in the correct bases
+                measurement_circuit = [ act_gates(fragment, basis_gates[basis], wire)
+                                        for wire, basis in zip(exit_wires, exit_bases) ]
+                circuit = reduce(lambda x, y : x + y,
+                                 [ init_circuit ] + measurement_circuit)
 
                 # get probability distribution over measurement outcomes
                 full_dist = get_circuit_distribution(circuit, backend_simulator,
