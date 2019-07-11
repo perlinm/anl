@@ -457,6 +457,7 @@ def simulate_and_combine(fragments, frag_stitches,
 
     # loop over all assigments of stitch operators at all cut locations
     for op_assignment in set_product(stitch_ops, repeat = len(frag_stitches)):
+        if kwargs["updates"]: print(op_assignment)
 
         # collect the assignments of exit/init outcomes/states for each fragment
         frag_exit_keys = [ set() for _ in range(len(fragments)) ]
