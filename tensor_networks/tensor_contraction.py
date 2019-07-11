@@ -9,15 +9,24 @@ tf.compat.v1.enable_v2_behavior()
 import tensornetwork as tn
 from tensornetwork.contractors import greedy_contractor
 
-# return an indexed pure state of given number of qubits
-def idx_state(index, qubits, dtype = tf.float64):
-    qubits = max(0,qubits)
-    dim = 2**qubits
-    return tf.reshape(tf.one_hot(index % dim, dim, dtype = dtype), (2,)*qubits)
+# return an indexed pure state in a space with a given tensor product structure (shape)
+def idx_state(index, shape, dtype = tf.float64):
+    dim = max(np.prod(shape, dtype = int), 1)
+    return tf.reshape(tf.one_hot(index % dim, dim, dtype = dtype), shape)
 
-# return the trivial (zero) state of a given number of qubits
-def zero_state(qubits, dtype = tf.float64):
-    return idx_state(0, qubits, dtype)
+# return the trivial (zero) state in a space with a given shape
+def zero_state(shape = (), dtype = tf.float64):
+    return idx_state(0, shape, dtype)
+
+# attach (remove) a subsystem to (from) a state
+def attach_subsystem(state, shape):
+    if len(shape) == 0: return state
+    return tf.tensordot(zero_state(shape, dtype = state.dtype), state, axes = 0)
+def remove_subsystem(state, del_num):
+    if del_num <= 0: return state
+    shape = state.get_shape()[:del_num]
+    return tf.tensordot(zero_state(shape, dtype = state.dtype), state,
+                        axes = [ list(range(del_num)) ]*2)
 
 # identify input/output edges to this node, as well as the corresponding axes
 def get_edge_info(node, eaten_nodes):
@@ -65,33 +74,16 @@ def to_unitary(isometry):
     base_rot = tf.matmul(minimal_unitary, isometry, adjoint_a = True)[:base_dim,:base_dim]
 
     # lift the rotation R in A to a rotation R* in A_B via R* = V \circ R
-    base_num, trgt_num = base_dim.bit_length()-1, trgt_dim.bit_length()-1
-    ancilla_num = trgt_num - base_num
-    ancilla_dim = 2**ancilla_num
+    ancilla_dim = trgt_dim // base_dim
     ancilla_identity = tf.eye(ancilla_dim, dtype = isometry.dtype)
-    ancilla_identity = tf.reshape(ancilla_identity, (2,2)*ancilla_num)
     trgt_rot = tf.tensordot(ancilla_identity, base_rot, axes = 0) # <-- this is R*
 
     # rearrange the indices in R* properly
-    idx_perm = list(range(ancilla_num)) \
-             + list(range(2*ancilla_num, 2*ancilla_num + base_num)) \
-             + list(range(ancilla_num, 2*ancilla_num)) \
-             + list(range(2*ancilla_num + base_num, 2*ancilla_num + 2*base_num))
-    trgt_rot = tf.reshape(trgt_rot, (2,2)*trgt_num)
-    trgt_rot = tf.transpose(trgt_rot, idx_perm)
+    trgt_rot = tf.transpose(trgt_rot, [ 0, 2, 1, 3 ])
     trgt_rot = tf.reshape(trgt_rot, (trgt_dim,)*2)
 
     # return U = U* R*
     return tf.matmul(minimal_unitary, trgt_rot)
-
-# attach (remove) some qubits to (from) a state
-def attach_qubits(state, add_num):
-    if add_num <= 0: return state
-    return tf.tensordot(zero_state(add_num, dtype = state.dtype), state, axes = 0)
-def remove_qubits(state, del_num):
-    if del_num <= 0: return state
-    return tf.tensordot(zero_state(del_num, dtype = state.dtype), state,
-                        axes = [ list(range(del_num)) ]*2)
 
 # simulate the contracting of a tensor network using a computer
 # uses the method described in arxiv.org/abs/0805.0040
@@ -105,7 +97,7 @@ def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.
     tf_X = tf.constant([[0,1],[1,0]], dtype = dtype) # Pauli-X
 
     log_net_norm = 0
-    state = zero_state(0, dtype = dtype)
+    state = zero_state(dtype = dtype)
 
     eaten_nodes = set()
     dangling_edges = []
@@ -120,17 +112,25 @@ def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.
         inp_num = len(inp_edges) # number of input qubits to the swallowing operator
         out_num = len(out_edges) # number of output qubits to the swallowing operator
         aux_num = len(aux_edges) # number of auxiliary (bystander) qubits
-        assert(aux_num == len(state.shape) - inp_num) # sanity check
+        assert( aux_num == len(state.shape) - inp_num ) # sanity check
 
         # rearrange the order of qubits in the state
         inp_state_idx = [ dangling_edges.index(edge) for edge in inp_edges ]
         aux_state_idx = [ dangling_edges.index(edge) for edge in aux_edges ]
         state = tf.transpose(state, inp_state_idx + aux_state_idx)
 
+        # get the dimensions of the input, output, and auxiliary spaces
+        inp_dims = tuple( edge.dimension for edge in inp_edges )
+        out_dims = tuple( edge.dimension for edge in out_edges )
+        aux_dims = tuple( edge.dimension for edge in aux_edges )
+        inp_dim = np.prod(inp_dims, dtype = int)
+        out_dim = np.prod(out_dims, dtype = int)
+        aux_dim = np.prod(aux_dims, dtype = int)
+
         # get the tensor/matrix associated with this node, reordering axes as necessary
         swallow_tensor = tf.transpose(tf.cast(node.get_tensor(), dtype),
                                       out_op_idx + inp_op_idx)
-        swallow_matrix = tf.reshape(swallow_tensor, (2**out_num, 2**inp_num))
+        swallow_matrix = tf.reshape(swallow_tensor, (out_dim, inp_dim))
 
         # perform singular-value decomposition of swallowing_matrix:
         #   S = V_L @ diag(D) @ V_R^\dag,
@@ -152,26 +152,30 @@ def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.
                 + tf.tensordot(tf_X, tf.linalg.diag(tf.sqrt(1-normed_vals_D**2)), axes = 0)
 
         # rotate into the right-diagonal basis of the swallowing operator
-        state = tf.reshape(state, (2**inp_num,) + (2,)*aux_num)
+        state = tf.reshape(state, (inp_dim,) + aux_dims)
         state = tf.tensordot(tf.transpose(mat_V_R, conjugate = True), state, axes = [[1],[0]])
-        state = tf.reshape(state, (2,)*(inp_num+aux_num))
+        state = tf.reshape(state, inp_dims + aux_dims)
 
         # if we lose qubits upon swallowing this operator, then project them out now
-        state = remove_qubits(state, max(0, inp_num - out_num))
+        state = remove_subsystem(state, max(0, inp_num - out_num))
 
         # attach ancilla, act on the state by the unitary U_D, and project out the ancilla
-        state = tf.reshape(state, (2**min(inp_num,out_num),) + (2,)*aux_num)
-        state = attach_qubits(state, 1)
+        state = tf.reshape(state, (min(inp_dim,out_dim),) + aux_dims)
+        state = attach_subsystem(state, (2,))
         state = tf.tensordot(mat_U_D, state, axes = [ [1,3], [0,1] ])
-        state = remove_qubits(state, 1)
+        state = remove_subsystem(state, 1)
 
         # if we gain qubits upon swallowing this tensor, then attach them now
-        state = attach_qubits(state, max(0, out_num - inp_num))
+        if out_dim > inp_dim:
+            new_dims = list(out_dims)
+            for dim in inp_dims:
+                new_dims.remove(dim)
+            state = attach_subsystem(state, new_dims)
 
         # rotate back from the left-diagonal basis of the swallowing operator
-        state = tf.reshape(state, (2**out_num,) + (2,)*aux_num)
+        state = tf.reshape(state, (out_dim,) + aux_dims)
         state = tf.tensordot(mat_V_L, state, axes = [ [1], [0] ])
-        state = tf.reshape(state, (2,)*(out_num+aux_num))
+        state = tf.reshape(state, out_dims + aux_dims)
 
         # add to our list of "eaten" nodes, update the list of dangling edges
         eaten_nodes.add(node)
