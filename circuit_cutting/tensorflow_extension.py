@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+import numpy as np
+from itertools import product as set_product
+
 import os
 import tensorflow as tf
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
@@ -40,10 +43,7 @@ def tf_outer_product(tensor_a, tensor_b):
         return tf.tensordot(tensor_a, tensor_b, axes = 0)
     else:
         indices = [ tf.concat([ idx_a, idx_b ], 0)
-                    for idx_a in tensor_a.indices
-                    for idx_b in tensor_b.indices ]
-        values =  [ val_a * val_b
-                    for val_a in tensor_a.values
-                    for val_b in tensor_b.values ]
+                    for idx_a, idx_b in set_product(tensor_a.indices, tensor_b.indices) ]
+        values =  np.outer(tensor_a.values, tensor_b.values).flatten()
         dense_shape = tf.concat([ tensor_a.dense_shape, tensor_b.dense_shape ], 0)
         return tf.SparseTensor(indices, values, dense_shape)
