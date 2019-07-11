@@ -44,7 +44,12 @@ def tf_outer_product(tensor_a, tensor_b):
     else:
         index_iterator = set_product(tensor_a.indices.numpy(), tensor_b.indices.numpy())
         indices = [ np.concatenate(index_pair) for index_pair in index_iterator ]
-        values = np.empty(( len(tensor_a.values), len(tensor_b.values) ))
-        values = np.outer(tensor_a.values, tensor_b.values, values).flatten()
+
+        values_a = tensor_a.values.numpy()
+        values_b = tensor_b.values.numpy()
+        values_shape = ( len(tensor_a.values), len(tensor_b.values) )
+        values = np.empty(values_shape, dtype = values_a.dtype)
+        values = np.outer(values_a, values_b, values).flatten()
+
         dense_shape = tf.concat([ tensor_a.dense_shape, tensor_b.dense_shape ], 0)
         return tf.SparseTensor(indices, values, dense_shape)

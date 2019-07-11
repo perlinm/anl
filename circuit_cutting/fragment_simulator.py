@@ -180,7 +180,7 @@ def get_circuit_distribution(circuit, backend_simulator = "statevector_simulator
         qubits = len(state_vector).bit_length()-1
         amplitudes = tf.constant(state_vector, shape = (2,)*qubits)
         if return_amplitudes: return amplitudes
-        else: return abs(amplitudes)**2
+        else: return tf.cast(abs(amplitudes)**2, dtype = dtype)
 
     if backend_simulator == "qasm_simulator":
         # identify current registers in the circuit
@@ -275,7 +275,7 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None,
             # get the state vector for the circuit (i.e. with amplitudes)
             all_amplitudes \
                 = get_circuit_distribution(init_circuit, backend_simulator,
-                                           return_amplitudes = True, dtype = dtype)
+                                           return_amplitudes = True)
 
             # for every set of measurement outcomes on all on exit wires
             for exit_states in set_product(basis_ZXY_statevector,
@@ -290,7 +290,7 @@ def get_fragment_distribution(fragment, init_wires = None, exit_wires = None,
                         = tf.tensordot(exit_vec, projected_amplitudes, axes = axes)
 
                 # probability distribution on non-exit output wires
-                dist = abs(projected_amplitudes)**2
+                dist = tf.cast(abs(projected_amplitudes)**2, dtype = dtype)
 
                 exit_terms = [ dist_terms_ZXY_statevector(state)
                                for state in exit_states ]
@@ -455,9 +455,10 @@ def simulate_and_combine(fragments, frag_stitches,
         values = tf.constant([], dtype = dtype)
         combined_dist = tf.SparseTensor(indices, values, dist_shape)
 
+
     # loop over all assigments of stitch operators at all cut locations
     for op_assignment in set_product(stitch_ops, repeat = len(frag_stitches)):
-        if kwargs["updates"]: print(op_assignment)
+        if kwargs.get("updates"): print(op_assignment)
 
         # collect the assignments of exit/init outcomes/states for each fragment
         frag_exit_keys = [ set() for _ in range(len(fragments)) ]
