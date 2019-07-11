@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 
 import numpy as np
@@ -66,27 +67,21 @@ for old_wire, new_wire in sorted(frag_stitches.items()):
 def to_str(vals):
     return "".join([ str(val) for val in vals ])
 
-# convert a distribution function into dictionary format
-def dist_vec_to_dict(distribution, cutoff = 1e-10):
-    if type(distribution) is dict: return distribution
-
+# print a probability distribution
+def print_dist(distribution):
     if type(distribution) is tf.SparseTensor:
-        idx_val_zip = zip(distribution.indices, distribution.values)
-        dist_dict = { to_str(idx.numpy()) : val.numpy()
-                      for idx, val in idx_val_zip
-                      if abs(val.numpy()) > cutoff }
-        return dist_dict
+        for idx, val in zip(distribution.indices.numpy(), distribution.values.numpy()):
+            print(to_str(idx), val)
 
-    if type(distribution) is not np.ndarray:
-        return dist_vec_to_dict(np.array(distribution))
-
-    return { to_str(idx) : distribution[idx]
-             for idx in np.ndindex(distribution.shape)
-             if abs(distribution[idx]) > cutoff }
+    else:
+        distribution = distribution.numpy()
+        for idx in np.ndindex(distribution.shape):
+            print(to_str(idx), distribution[idx])
 
 # fidelity of two distribution functions: tr( sqrt(rho_0 * rho_1) )
 def distribution_fidelity(dist_0, dist_1):
     if type(dist_0) is tf.SparseTensor and type(dist_1) is not tf.SparseTensor:
+        dist_1 = dist_1.numpy()
         return sum( np.sqrt(complex(value) * complex(dist_1[tuple(idx)]))
                     for idx, value in zip(dist_0.indices, dist_0.values) )
 
@@ -104,14 +99,12 @@ combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ
 
 
 print()
-print("full circuit probability distribution")
-for key, val in dist_vec_to_dict(circ_dist).items():
-    print(key, val)
+print("full circuit probability distribution:")
+print_dist(circ_dist)
 
 print()
-print("reconstructed probability distribution")
-for key, val in dist_vec_to_dict(combined_dist).items():
-    print(key, val)
+print("reconstructed probability distribution:")
+print_dist(combined_dist)
 
 print()
 print("fidelity:", distribution_fidelity(circ_dist, combined_dist))
