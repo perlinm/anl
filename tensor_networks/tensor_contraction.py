@@ -208,9 +208,8 @@ def classical_contraction(net, nodes, bubbler = None):
         inp_edges, inp_op_idx, out_edges, out_op_idx = get_edge_info(node, eaten_nodes)
 
         # get the dimensions of the input/output spaces
-        node_shape = node.get_tensor().shape
-        inp_dim = np.prod([ node_shape[idx] for idx in inp_op_idx ], dtype = int)
-        out_dim = np.prod([ node_shape[idx] for idx in out_op_idx ], dtype = int)
+        inp_dim = np.prod([ edge.dimension for edge in inp_edges ], dtype = int)
+        out_dim = np.prod([ edge.dimension for edge in out_edges ], dtype = int)
 
         # get the tensor associated with this node, reordering axes as necessary
         swallow_tensor = tf.transpose(node.get_tensor(), out_op_idx + inp_op_idx)
