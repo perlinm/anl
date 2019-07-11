@@ -81,7 +81,8 @@ for size in sizes:
         else:
             log_probs[jj], log_norms[jj] = classical_contraction(net, nodes, bubbler)
 
-        log_Z[jj] = log_norms[jj] + 1/2 * log_probs[jj] + log_net_scale
+        log_norms[jj] += log_net_scale
+        log_Z[jj] = log_norms[jj] + 1/2 * log_probs[jj]
 
         if inv_temps[jj] == 0: continue
         small_field = small_value / inv_temps[jj]
@@ -94,13 +95,9 @@ for size in sizes:
         else:
             log_prob, log_norm = classical_contraction(net, nodes, bubbler)
 
-        log_Z_small_field = log_norm + 1/2 * log_prob + log_net_scale
+        log_norm += log_net_scale
+        log_Z_small_field = log_norm + 1/2 * log_prob
         sqr_M[jj] = 2 * ( log_Z_small_field - log_Z[jj] ) / small_value**2
-
-    # probability of "acceptance" -- finding all ancillas in |0>
-    plt.figure("probs")
-    plt.plot(inv_temps / crit_inv_temp, log_probs / volume, ".", label = f"$N={size}$")
-    plt.ylabel(r"$\log p/V$")
 
     # partition function
     plt.figure("log_Z")
@@ -114,6 +111,24 @@ for size in sizes:
     plt.figure("energy", figsize = figsize)
     plt.plot(mid_inv_temps / crit_inv_temp, energy / volume, ".", label = f"$N={size}$")
     plt.ylabel(r"$\Braket{E}/V$")
+
+    # heat_capacity
+    mid_mid_inv_temps = ( mid_inv_temps[1:] + mid_inv_temps[:-1] ) / 2
+    heat_capacity = ( energy[1:] - energy[:-1] ) / ( mid_inv_temps[1:] - mid_inv_temps[:-1] )
+    plt.figure("heat_capacity", figsize = figsize)
+    plt.plot(mid_mid_inv_temps / crit_inv_temp, heat_capacity / volume, ".", label = f"$N={size}$")
+    plt.ylabel(r"$C_V/V$")
+
+    # tensor network norms
+    plt.figure("norms")
+    plt.plot(inv_temps / crit_inv_temp, log_norms / volume, ".", label = f"$N={size}$")
+    plt.ylabel(r"$\log\mathcal{D}/V$")
+    plt.ylim(0, plt.gca().get_ylim()[-1])
+
+    # probability of "acceptance" -- i.e. of finding all ancillas in |0>
+    plt.figure("probs")
+    plt.plot(inv_temps / crit_inv_temp, log_probs / volume, ".", label = f"$N={size}$")
+    plt.ylabel(r"$\log p/V$")
 
     # squared magnetization density
     plt.figure("mag")
