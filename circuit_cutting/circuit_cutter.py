@@ -151,7 +151,7 @@ def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
 
             # if this edge ends at the node at which we're cutting, splice in the new wire
             if cut_wire in edge[0].qargs and edge[1] == cut_node:
-                graph._multi_graph.remove_edge(*edge[:2])
+                graph._multi_graph.remove_edge(*edge)
                 graph._multi_graph.add_edge(edge[0], cut_wire_out,
                                             name = f"{cut_wire[0].name}[{cut_wire[1]}]",
                                             wire = cut_wire)
@@ -162,14 +162,19 @@ def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
 
             # fix downstream references to the cut wire (in all edges)
             if edge[1] in cut_descendants:
-                graph._multi_graph.remove_edge(*edge[:2])
-                graph._multi_graph.add_edge(*edge[:2],
+                # there may be multiple edges between the nodes in `edge`,
+                # so first figure out which one we need to cut
+                edge_data = graph._multi_graph.get_edge_data(*edge)
+                for edge_key, data in edge_data.items():
+                    if data["wire"] == cut_wire: break
+                graph._multi_graph.remove_edge(*edge, edge_key)
+                graph._multi_graph.add_edge(*edge,
                                             name = f"{new_wire[0].name}[{new_wire[1]}]",
                                             wire = new_wire)
 
             # replace downstream terminal node of the cut wire by that of the new wire
             if edge[1] == cut_wire_out:
-                graph._multi_graph.remove_edge(*edge[:2])
+                graph._multi_graph.remove_edge(*edge)
                 graph._multi_graph.add_edge(edge[0], new_wire_out,
                                             name = f"{new_wire[0].name}[{new_wire[1]}]",
                                             wire = new_wire)
