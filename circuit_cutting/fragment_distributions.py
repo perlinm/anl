@@ -217,22 +217,22 @@ class FragmentAmplitudes(FragmentDistribution):
                 return self[vacancy.union({(is_input,state,wire)})]
 
             theta, phi = get_bloch_angles(state)
-            return ( np.cos(theta/2) * self[_amp_dist(0)] +
-                     np.exp(1j*phi) * np.sin(theta/2) * self[_amp_dist(1)] )
+            return ( self[_amp_dist(0)] * np.cos(theta/2) +
+                     self[_amp_dist(1)] * np.sin(theta/2) * np.exp(1j*phi) )
 
     # convert into a FragmentProbabilities object
     def to_probabilities(self, init_basis = SIC, exit_basis = ZZXY, dtype = tf.float64):
         assert( init_basis in [ SIC, ZZXY ] )
         assert( exit_basis in [ SIC, ZZXY ] )
 
-        probs = FragmentProbabilities(init_basis, exit_basis)
-
         def _dist_terms_SIC(oper, conjugate):
+            assert( oper in op_basis_IZXY )
             sign = 1 if not conjugate else -1
             theta, phi = get_bloch_angles(state_vecs_SIC[oper])
             return [ ( 0, np.cos(theta/2) ), ( 1, np.exp(sign*1j*phi) * np.sin(theta/2) ) ]
 
         def _dist_terms_ZZXY(oper, conjugate):
+            assert( oper in op_basis_ZZXY )
             if oper == "-Z":
                 return [ ( 1, 1 ) ]
             if oper == "+Z":
@@ -242,23 +242,17 @@ class FragmentAmplitudes(FragmentDistribution):
             if oper == "+Y":
                 sign = 1 if not conjugate else -1
                 return [ ( 0, 1/np.sqrt(2) ), ( 1, sign*1j/np.sqrt(2) ) ]
-            assert( False )
+            else: assert( False ) # something went badly wrong if we made it here
 
-        if init_basis == SIC:
-            init_op_basis = op_basis_SIC
-            _init_dist_terms = _dist_terms_SIC
-        elif init_basis == ZZXY:
-            init_op_basis = op_basis_ZZXY
-            _init_dist_terms = _dist_terms_ZZXY
+        _dist_terms = { SIC : _dist_terms_SIC,
+                        ZZXY : _dist_terms_ZZXY }
 
-        if exit_basis == SIC:
-            exit_op_basis = op_basis_SIC
-            _exit_dist_terms = _dist_terms_SIC
-        elif exit_basis == ZZXY:
-            exit_op_basis = op_basis_ZZXY
-            _exit_dist_terms = _dist_terms_ZZXY
+        init_op_basis = op_basis[init_basis]
+        exit_op_basis = op_basis[exit_basis]
+        _init_dist_terms = _dist_terms[init_basis]
+        _exit_dist_terms = _dist_terms[exit_basis]
 
-        # collect a list of all init/exit_wires
+        # identify all init/exit_wires
         for conditions in self.all_conditions():
             init_wires = { wire for is_input, _, wire in conditions if is_input }
             exit_wires = { wire for is_input, _, wire in conditions if not is_input }
