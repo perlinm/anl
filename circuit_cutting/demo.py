@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 
 import numpy as np
@@ -10,7 +9,8 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 tf.compat.v1.enable_v2_behavior()
 
 from circuit_cutter import cut_circuit
-from fragment_simulator import get_circuit_distribution, simulate_and_combine
+from fragment_simulator import get_circuit_distribution, get_fragment_probabilities, \
+    combine_fragment_probabilities
 
 ##########################################################################################
 # construct circuit of random local 2-qubit gates that we can cut
@@ -93,10 +93,13 @@ def distribution_fidelity(dist_0, dist_1):
 
 circ_dist = get_circuit_distribution(circ)
 
-combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits)
-# combined_dist = simulate_and_combine(fragments, frag_stitches, frag_wiring, circ.qubits,
-                                     # backend_simulator = "qasm_simulator", shots = 1000)
+frag_probs = get_fragment_probabilities(fragments, frag_stitches)
+# frag_probs = get_fragment_probabilities(fragments, frag_stitches,
+                                        # backend_simulator = "qasm_simulator", shots = 1000)
 
+frag_qubits = [ fragment.qubits for fragment in fragments ]
+combined_dist = combine_fragment_probabilities(frag_probs, frag_stitches,
+                                               frag_wiring, frag_qubits, circ.qubits)
 
 print()
 print("full circuit probability distribution:")
