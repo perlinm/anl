@@ -225,21 +225,23 @@ class FragmentAmplitudes(FragmentDistribution):
         assert( init_basis in [ SIC, ZZXY ] )
         assert( exit_basis in [ SIC, ZZXY ] )
 
+        # identify computational basis states and coefficients for each SIC / ZZXY state
         def _dist_terms_SIC(oper, conjugate):
-            assert( oper in op_basis_IZXY )
+            assert( oper in op_basis_SIC )
             sign = 1 if not conjugate else -1
             theta, phi = get_bloch_angles(state_vecs_SIC[oper])
+            # | theta, phi > = cos(theta/2) |0> + exp(i phi) sin(theta/2) | 1 >
             return [ ( 0, np.cos(theta/2) ), ( 1, np.exp(sign*1j*phi) * np.sin(theta/2) ) ]
 
         def _dist_terms_ZZXY(oper, conjugate):
             assert( oper in op_basis_ZZXY )
-            if oper == "-Z":
+            if oper == "-Z": # | -Z > = 1 | 1 >
                 return [ ( 1, 1 ) ]
-            if oper == "+Z":
+            if oper == "+Z": # | +Z > = 1 | 0 >
                 return [ ( 0, 1 ) ]
-            if oper == "+X":
+            if oper == "+X": # | +X > = ( | 0 > + | 1 > ) / sqrt(2)
                 return [ ( 0, 1/np.sqrt(2) ), ( 1, 1/np.sqrt(2) ) ]
-            if oper == "+Y":
+            if oper == "+Y": # | +Y > = ( | 0 > + i | 1 > ) / sqrt(2)
                 sign = 1 if not conjugate else -1
                 return [ ( 0, 1/np.sqrt(2) ), ( 1, sign*1j/np.sqrt(2) ) ]
             else: assert( False ) # something went badly wrong if we made it here
@@ -247,6 +249,8 @@ class FragmentAmplitudes(FragmentDistribution):
         _dist_terms = { SIC : _dist_terms_SIC,
                         ZZXY : _dist_terms_ZZXY }
 
+        # determine which basis of operators to use for init/exit conditions,
+        # as well as corresponding computational basis states / coefficients
         init_op_basis = op_basis[init_basis]
         exit_op_basis = op_basis[exit_basis]
         _init_dist_terms = _dist_terms[init_basis]
@@ -258,11 +262,16 @@ class FragmentAmplitudes(FragmentDistribution):
             exit_wires = { wire for is_input, _, wire in conditions if not is_input }
             break
 
+        # initialize a conditional probability distribution
         probs = FragmentProbabilities(init_basis, exit_basis)
+
+        # loop over all init/exit conditions (init_states/exit_states)
         for init_states in set_product(init_op_basis, repeat = len(init_wires)):
+            # conditions (for probs) corresponding to this choice of init_states
             prob_init_conds = { ( True, state, wire )
                                 for state, wire in zip(init_states, init_wires) }
 
+            # computational basis terms that contribute to this choice of init_states
             init_terms = [ _init_dist_terms(state, False) for state in init_states ]
 
             for exit_states in set_product(exit_op_basis, repeat = len(exit_wires)):
@@ -271,13 +280,17 @@ class FragmentAmplitudes(FragmentDistribution):
 
                 exit_terms = [ _exit_dist_terms(state, True) for state in exit_states ]
 
-                state_amps = 0
+                state_amps = 0 # empty vector of amplitudes for these init/exit_states
 
+                # looping over all contributing terms to this choice of init/exit_states
                 for init_bits_facs in set_product(*init_terms):
                     try: init_bits, init_facs = zip(*init_bits_facs)
                     except: init_bits, init_facs = [], []
 
+                    # scalar factor associated with this set of terms
                     init_fac = np.prod(init_facs)
+
+                    # conditions (i.e. on the amplitude distribution) for to this term
                     amp_init_conds = { ( True, bit, wire )
                                        for bit, wire in zip(init_bits, init_wires)}
 
@@ -289,9 +302,11 @@ class FragmentAmplitudes(FragmentDistribution):
                         amp_exit_conds = { ( False, bit, wire )
                                            for bit, wire in zip(exit_bits, exit_wires)}
 
+                        # add to the amplitudes for this choice of init/exit_states
                         fac = init_fac * exit_fac
                         state_amps += fac * self[amp_init_conds, amp_exit_conds]
 
+                # having collected amplitudes, convert them to probabilities
                 cond_probs = tf.cast(abs(state_amps)**2, dtype = dtype)
                 probs.add(prob_init_conds, prob_exit_conds, cond_probs)
 
