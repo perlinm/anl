@@ -165,15 +165,18 @@ class FragmentProbabilities(FragmentDistribution):
         return 1/4 * sum( ( 1 + 3 * np.dot(operator, vec) ) * _dist(idx)
                           for idx, vec in state_vecs_SIC.items() )
 
-    # return conditional distribution with conditions in the IZXY basis
-    def _get_dist_IZXY(self, operator, _dist):
+    # return conditional distribution with conditions in the {I,Z}ZXY bases
+    def _get_dist_ZXY(self, operator, _dist, basis_completion):
+        assert( basis_completion in [ IZXY, ZZXY ] )
 
-        # explicitly recognize -Z/X/Y operators by a string
-        if operator == "-Z": return _dist("I") - _dist("+Z")
+        # explicitly recognize standard ZXY and SIC operators by a string
+        if basis_completion == "IZXY":
+            if operator == "-Z": return _dist("I") - _dist("+Z")
+        else: # basis_completion == "ZZXY"
+            if operator == "I": return _dist("+Z") + _dist("-Z")
+
         if operator == "-X": return _dist("I") - _dist("+X")
         if operator == "-Y": return _dist("I") - _dist("+Y")
-
-        # explicitly recognize SIC-POVM elements by a string
         if operator in state_vecs_SIC.keys():
             return _dist(state_vecs_SIC[operator])
 
@@ -183,25 +186,14 @@ class FragmentProbabilities(FragmentDistribution):
         dist_ZXY = sum( val * _dist(direction)
                         for val, direction in zip(operator, directions_ZXY) )
         return dist_ZXY + _dist("I") * ( 1 - sum(operator) ) / 2
+
+    # return conditional distribution with conditions in the IZXY basis
+    def _get_dist_IZXY(self, operator, _dist):
+        return self._get_dist_ZXY(operator, _dist, IZXY)
 
     # return conditional distribution with conditions in the ZZXY basis
     def _get_dist_ZZXY(self, operator, _dist):
-
-        # explicitly recognize I, -X, -Y operators by a string
-        if operator == "I": return _dist("+Z") + _dist("-Z")
-        if operator == "-X": return _dist("I") - _dist("+X")
-        if operator == "-Y": return _dist("I") - _dist("+Y")
-
-        # explicitly recognize SIC-POVM elements by a string
-        if operator in state_vecs_SIC.keys():
-            return _dist(state_vecs_SIC[operator])
-
-        # return a distribution conditonal on an operator inside the bloch ball
-        assert( len(operator) == 3 )
-        directions_ZXY = [ "+Z", "+X", "+Y" ]
-        dist_ZXY = sum( val * _dist(direction)
-                        for val, direction in zip(operator, directions_ZXY) )
-        return dist_ZXY + _dist("I") * ( 1 - sum(operator) ) / 2
+        return self._get_dist_ZXY(operator, _dist, ZZXY)
 
 # class for storing conditional amplitude distributions
 class FragmentAmplitudes(FragmentDistribution):
