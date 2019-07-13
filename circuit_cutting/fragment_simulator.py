@@ -171,7 +171,7 @@ def get_single_fragment_amplitudes(fragment, init_wires = None, exit_wires = Non
         init_circuit = reduce(lambda x, y : x + y, prep_circuits + [ fragment ])
 
         # get the quantum state vector for the circuit
-        all_amplitudes = get_circuit_amplitudes(init_circuit, *kwargs)
+        all_amplitudes = get_circuit_amplitudes(init_circuit, **kwargs)
 
         # for every set of projections on all on exit wires
         for exit_states in set_product(range(2), repeat = len(exit_wires)):
@@ -329,6 +329,19 @@ def get_fragment_probabilities(fragments, frag_stitches,
     return [ _get_frag_probs(ff, ii, ee)
              for ff, ii, ee in zip(fragments, init_wires, exit_wires) ]
 
+# get conditional amplitudes or probabilities as appropriate
+def get_fragment_distributions(fragments, frag_stitches,
+                               backend_simulator = "statevector_simulator",
+                               init_op_basis = SIC, dtype = tf.float64,
+                               force_probs = False, **kwargs):
+    if backend_simulator == "statevector_simulator":
+        frag_amplitudes = get_fragment_amplitudes(fragments, frag_stitches, **kwargs)
+        if not force_probs: return frag_amplitudes
+        else: return [ amplitudes.to_probabilities() for amplitudes in frag_amplitudes ]
+    else:
+        return get_fragment_probabilities(fragments, frag_stitches,
+                               backend_simulator, init_op_basis, dtype, **kwargs)
+
 ##########################################################################################
 # methods to combine conditional fragment distributions
 ##########################################################################################
@@ -355,12 +368,13 @@ def rearrange_wires(distribution, old_wire_order, new_wire_order, wire_map = Non
         return tf.sparse.transpose(distribution, axis_permutation)
 
 # sort the qubits of a reconstructed probability distrubion
+# essentially use wiring data to call rearrange_wires appropriately
 def sort_reconstructed_distribution(distribution, frag_stitches, frag_wiring,
-                                    frag_qubits, circuit_wires):
+                                    frag_wires, circuit_wires):
 
     # identify the order of wires in the reconstructed probability distribution
     combined_wire_order = [ ( frag_idx, qubit )
-                            for frag_idx, qubits in enumerate(frag_qubits)
+                            for frag_idx, qubits in enumerate(frag_wires)
                             for qubit in qubits
                             if ( frag_idx, qubit ) not in frag_stitches.keys() ]
 
@@ -368,67 +382,79 @@ def sort_reconstructed_distribution(distribution, frag_stitches, frag_wiring,
     wire_map = frag_wire_map(circuit_wires, frag_wiring, frag_stitches)
     return rearrange_wires(distribution, combined_wire_order, circuit_wires, wire_map)
 
-# combine conditional probability distributions of fragments
-def combine_fragment_probabilities(frag_probs, frag_stitches, frag_wiring = None,
-                                   frag_qubits = None, circuit_wires = None,
-                                   stitch_basis = SIC, dtype = tf.float64, updates = False):
+# collect all conditional distributions from fragments
+# with a given assignment of stitch operators
+def collect_distribution_factors(frag_dists, frag_stitches, op_assignment):
+    frag_exit_conds = [ set() for _ in range(len(frag_dists)) ]
+    frag_init_conds = [ set() for _ in range(len(frag_dists)) ]
+    for stitch_idx, ( exit_frag_wire, init_frag_wire ) in enumerate(frag_stitches.items()):
+        exit_frag_idx, exit_wire = exit_frag_wire
+        init_frag_idx, init_wire = init_frag_wire
+        frag_exit_conds[exit_frag_idx].add(( op_assignment[stitch_idx], exit_wire ))
+        frag_init_conds[init_frag_idx].add(( op_assignment[stitch_idx], init_wire ))
 
-    assert(( frag_wiring and frag_qubits and circuit_wires ) or
-           ( not frag_wiring and not frag_qubits and not circuit_wires ))
+    return [ frag_dist[init_conds, exit_conds]
+             for frag_dist, init_conds, exit_conds
+             in zip(frag_dists, frag_init_conds, frag_exit_conds) ]
 
-    # determine which operators to assign to stitches
-    if stitch_basis == SIC:
-        stitch_ops = list(state_vecs_SIC.keys()) + [ "I" ]
-    else:
-        stitch_ops = list(state_vecs_ZXY.keys()) + [ "I" ]
+# combine conditional distributions of fragments into a circuit distribution
+def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None,
+                                   frag_wires = None, circuit_wires = None,
+                                   stitch_basis = SIC, return_probs = True,
+                                   status_updates = False):
 
-    # determine the type and shape of the combined probability distributon
-    combined_shape = ()
-    for frag_prob in frag_probs:
-        for _, dist in frag_prob:
-            dist_type = type(dist)
-            combined_shape += tuple(dist.shape)
+    assert(( frag_wiring and frag_wires and circuit_wires ) or
+           ( not frag_wiring and not frag_wires and not circuit_wires ))
+
+    # determine the type and shape of the combined distributon
+    combined_dist_shape = ()
+    for frag_dist in frag_dists:
+        for _, dist in frag_dist:
+            dist_obj_type = type(dist) # type of dist *itself*
+            dist_dat_type = dist.dtype # type of the data stored in dist
+            combined_dist_shape += tuple(dist.shape)
             break
 
     # initialize an empty probability distribution
-    if dist_type is tf.SparseTensor:
-        indices = np.empty((0,len(combined_shape)))
-        values = tf.constant([], dtype = dtype)
-        combined_dist = tf.SparseTensor(indices, values, combined_shape)
+    if dist_obj_type is tf.SparseTensor:
+        indices = np.empty((0,len(combined_dist_shape)))
+        values = tf.constant([], dtype = dist_dat_type)
+        combined_dist = tf.SparseTensor(indices, values, combined_dist_shape)
     else:
-        combined_dist = tf.zeros(combined_shape, dtype = dtype)
+        combined_dist = tf.zeros(combined_dist_shape, dtype = dist_dat_type)
+
+    # determine which operators to assign to stitches,
+    # as well as the scalar factor associated with any given operator assignment
+    if dist_dat_type in [ tf.dtypes.complex64, tf.dtypes.complex128 ]:
+        # the conditional distributions are amplitudes
+        stitch_ops = range(2)
+        def _scalar_factor(_): return 1
+        convert_amps_to_probs = return_probs
+    else:
+        # the conditional distributions are probabilities
+        if stitch_basis == SIC:
+            stitch_ops = list(state_vecs_SIC.keys()) + [ "I" ]
+            def _scalar_factor(op_assignment):
+                return np.product([ -1 if op == "I" else 3/2 for op in op_assignment ])
+        else:
+            stitch_ops = list(state_vecs_ZXY.keys()) + [ "I" ]
+            def _scalar_factor(op_assignment):
+                return (-1)**np.sum( op == "I" for op in op_assignment )
+        convert_amps_to_probs = False
 
     # loop over all assigments of stitch operators at all cut locations
     for op_assignment in set_product(stitch_ops, repeat = len(frag_stitches)):
-        if updates: print(op_assignment)
+        if status_updates: print(op_assignment)
 
-        # collect the assignments of exit/init outcomes/states for each fragment
-        frag_exit_conds = [ set() for _ in range(len(frag_probs)) ]
-        frag_init_conds = [ set() for _ in range(len(frag_probs)) ]
-        for stitch_idx, ( exit_frag_wire, init_frag_wire ) in enumerate(frag_stitches.items()):
-            exit_frag_idx, exit_wire = exit_frag_wire
-            init_frag_idx, init_wire = init_frag_wire
-            frag_exit_conds[exit_frag_idx].add(( op_assignment[stitch_idx], exit_wire ))
-            frag_init_conds[init_frag_idx].add(( op_assignment[stitch_idx], init_wire ))
-
-        dist_factors = [ frag_dist[init_conds, exit_conds]
-                         for frag_dist, init_conds, exit_conds
-                         in zip(frag_probs, frag_init_conds, frag_exit_conds) ]
-
-        # get the scalar factor associated with this assignment of stitch operators
-        if stitch_basis == SIC:
-            scalar_factor = np.product([ -1 if op == "I" else 3/2 for op in op_assignment ])
-        else:
-            scalar_factor = (-1)**np.sum( op == "I" for op in op_assignment )
-
-        # add to the combined probability distribution over measurement outcomes
+        # add to the combined distributions
+        scalar_factor = _scalar_factor(op_assignment)
+        dist_factors = collect_distribution_factors(frag_dists, frag_stitches, op_assignment)
         combined_dist += scalar_factor * reduce(tf_outer_product, dist_factors[::-1])
 
-    # if we did not provide wiring info, simply return the combined probability distribution
-    if frag_wiring is None:
-        return combined_dist
+    if convert_amps_to_probs: combined_dist = abs(combined_dist)**2
 
+    # if we did not provide wiring info, return the combined distribution as is
     # otherwise, sort qubits appropriately
-    else:
-        return sort_reconstructed_distribution(combined_dist, frag_stitches,
-                                               frag_wiring, frag_qubits, circuit_wires)
+    if frag_wiring is None: return combined_dist
+    return sort_reconstructed_distribution(combined_dist, frag_stitches,
+                                           frag_wiring, frag_wires, circuit_wires)

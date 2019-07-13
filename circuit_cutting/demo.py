@@ -9,8 +9,16 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 tf.compat.v1.enable_v2_behavior()
 
 from circuit_cutter import cut_circuit
-from fragment_simulator import get_circuit_distribution, get_fragment_probabilities, \
-    combine_fragment_probabilities
+from fragment_simulator import get_circuit_distribution, \
+    get_fragment_distributions, combine_fragment_distributions
+
+
+backend_simulator = "statevector_simulator"
+# backend_simulator = "qasm_simulator"
+shots = 10**5
+
+# print status updates during recombination?
+status_updates = False
 
 ##########################################################################################
 # construct circuit of random local 2-qubit gates that we can cut
@@ -19,30 +27,32 @@ qubits = 3
 layers = 2
 
 qreg = qs.QuantumRegister(qubits, "q")
-circ = qs.QuantumCircuit(qreg)
+circuit = qs.QuantumCircuit(qreg)
 
 np.random.seed(0)
 def random_unitary():
     return qs.quantum_info.random.utils.random_unitary(4)
 
 for idx, qubit in enumerate(qreg):
-    circ.u0(idx, qubit)
+    circuit.u0(idx, qubit)
 
 for layer in range(layers):
     for odd_links in range(2):
         for jj in range(odd_links, qubits-1, 2):
             random_gate = random_unitary()
-            circ.append(random_gate, [ qreg[jj], qreg[jj+1] ])
+            circuit.append(random_gate, [ qreg[jj], qreg[jj+1] ])
 
 for idx, qubit in enumerate(qreg):
-    circ.u0(idx, qubit)
+    circuit.u0(idx, qubit)
 
 cuts = [ (qreg[qubits//2], op+1) for op in range(1,2*layers) ]
-fragments, frag_wiring, frag_stitches = cut_circuit(circ, *cuts)
+fragments, frag_wiring, frag_stitches = cut_circuit(circuit, *cuts)
 
+circ_wires = circuit.qubits
+frag_wires = [ fragment.qubits for fragment in fragments ]
 
 print("original circuit:")
-print(circ)
+print(circuit)
 
 print()
 for jj, fragment in enumerate(fragments):
@@ -91,23 +101,21 @@ def distribution_fidelity(dist_0, dist_1):
     return tf.reduce_sum(tf.sqrt(tf.math.multiply(dist_0, dist_1))).numpy()
 
 
-circ_dist = get_circuit_distribution(circ)
+circuit_distribution = get_circuit_distribution(circuit)
 
-frag_probs = get_fragment_probabilities(fragments, frag_stitches)
-# frag_probs = get_fragment_probabilities(fragments, frag_stitches,
-                                        # backend_simulator = "qasm_simulator", shots = 1000)
-
-frag_qubits = [ fragment.qubits for fragment in fragments ]
-combined_dist = combine_fragment_probabilities(frag_probs, frag_stitches,
-                                               frag_wiring, frag_qubits, circ.qubits)
+frag_distributions \
+    = get_fragment_distributions(fragments, frag_stitches, backend_simulator, shots = shots)
+reconstructed_distribution \
+    = combine_fragment_distributions(frag_distributions, frag_stitches, frag_wiring,
+                                     frag_wires, circ_wires, status_updates = status_updates)
 
 print()
 print("full circuit probability distribution:")
-print_dist(circ_dist)
+print_dist(circuit_distribution)
 
 print()
 print("reconstructed probability distribution:")
-print_dist(combined_dist)
+print_dist(reconstructed_distribution)
 
 print()
-print("fidelity:", distribution_fidelity(circ_dist, combined_dist))
+print("fidelity:", distribution_fidelity(circuit_distribution, reconstructed_distribution))
