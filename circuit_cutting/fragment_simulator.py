@@ -339,8 +339,8 @@ def get_fragment_distributions(fragments, frag_stitches,
         if not force_probs: return frag_amplitudes
         else: return [ amplitudes.to_probabilities() for amplitudes in frag_amplitudes ]
     else:
-        return get_fragment_probabilities(fragments, frag_stitches,
-                               backend_simulator, init_op_basis, dtype, **kwargs)
+        return get_fragment_probabilities(fragments, frag_stitches, backend_simulator,
+                                          init_op_basis, dtype, **kwargs)
 
 ##########################################################################################
 # methods to combine conditional fragment distributions
