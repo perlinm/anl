@@ -53,3 +53,9 @@ def tf_outer_product(tensor_a, tensor_b):
 
         dense_shape = tf.concat([ tensor_a.dense_shape, tensor_b.dense_shape ], 0)
         return tf.SparseTensor(indices, values, dense_shape)
+
+def tf_transpose(tensor, permutation):
+    if type(tensor) is not tf.SparseTensor:
+        return tf.transpose(tensor, permutation)
+    else:
+        return tf.sparse.transpose(tensor, permutation)

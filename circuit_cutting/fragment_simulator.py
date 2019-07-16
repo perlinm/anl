@@ -8,7 +8,7 @@ import tensorflow as tf
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 tf.compat.v1.enable_v2_behavior()
 
-from tensorflow_extension import tf_outer_product
+from tensorflow_extension import tf_outer_product, tf_transpose
 
 from itertools import product as set_product
 from functools import reduce
@@ -37,7 +37,7 @@ def prep_gate(state):
 basis_gates = { basis : prep_gate(f"+{basis}").inverse()
                 for basis in [ "Z", "X", "Y" ] }
 
-def sort_init_exit_wires(frag_stitches, num_fragments):
+def identify_init_exit_wires(frag_stitches, num_fragments):
     '''
     identify initialization and exit wires for each fragment
 
@@ -63,14 +63,11 @@ def sort_init_exit_wires(frag_stitches, num_fragments):
                          for frag_idx in range(num_fragments) ])
     return init_wires, exit_wires
 
-# return an empty circuit on the registers of an existing circuit
-def empty_circuit(circuit):
-    registers = set( wire[0] for wire in circuit.qubits + circuit.clbits )
-    return qs.QuantumCircuit(*registers)
-
-# act with the given gates acting on the given qubits
+# act with the given gates on the given qubits
 def act_gates(circuit, gates, *qubits):
-    new_circuit = empty_circuit(circuit)
+    # build an empty circuit on the registers of an existing circuit
+    registers = set( wire[0] for wire in circuit.qubits + circuit.clbits )
+    new_circuit = qs.QuantumCircuit(*registers)
     if not gates: return new_circuit
     if type(gates) is not list: gates = [ gates ]
     for gate in gates:
@@ -308,7 +305,7 @@ def get_single_fragment_probabilities(fragment, init_wires = None, exit_wires = 
 # get amplitudes for a list of fragments
 def get_fragment_amplitudes(fragments, frag_stitches, **kwargs):
     # collect lists of initialization / exit wires for all fragments
-    init_wires, exit_wires = sort_init_exit_wires(frag_stitches, len(fragments))
+    init_wires, exit_wires = identify_init_exit_wires(frag_stitches, len(fragments))
 
     # compute conditional distributions over measurement outcomes for all fragments
     return [ get_single_fragment_amplitudes(ff, ii, ee, **kwargs)
@@ -319,7 +316,7 @@ def get_fragment_probabilities(fragments, frag_stitches,
                                backend_simulator = "statevector_simulator",
                                init_op_basis = SIC, dtype = tf.float64, **kwargs):
     # collect lists of initialization / exit wires for all fragments
-    init_wires, exit_wires = sort_init_exit_wires(frag_stitches, len(fragments))
+    init_wires, exit_wires = identify_init_exit_wires(frag_stitches, len(fragments))
 
     def _get_frag_probs(ff, ii, ee):
         return get_single_fragment_probabilities(ff, ii, ee, backend_simulator,
@@ -346,44 +343,22 @@ def get_fragment_distributions(fragments, frag_stitches,
 # methods to combine conditional fragment distributions
 ##########################################################################################
 
-# return a dictionary mapping fragment output wires to corresponding wires of a circuit
-def frag_wire_map(circuit_wires, fragment_wiring, fragment_stitches):
-    wire_map = {}
-    for original_wire in circuit_wires:
-        frag_wire = fragment_wiring[original_wire]
-        while frag_wire in fragment_stitches:
-            frag_wire = fragment_stitches[frag_wire]
-        wire_map[frag_wire] = original_wire
-    return wire_map
-
-# rearrange the ordering of wires in a distribution over measurement outcomes
-def rearrange_wires(distribution, old_wire_order, new_wire_order, wire_map = None):
-    if wire_map is None: wire_map = { wire : wire for wire in old_wire_order }
-    current_wire_order = [ wire_map[wire] for wire in old_wire_order ]
-    wire_permutation = [ current_wire_order.index(wire) for wire in new_wire_order ]
-    axis_permutation = [ len(new_wire_order) - 1 - idx for idx in wire_permutation ][::-1]
-    if type(distribution) is not tf.SparseTensor:
-        return tf.transpose(distribution, axis_permutation)
-    else:
-        return tf.sparse.transpose(distribution, axis_permutation)
-
-# sort the qubits of a reconstructed probability distrubion
-# essentially use wiring data to call rearrange_wires appropriately
-def sort_reconstructed_distribution(distribution, frag_stitches, frag_wiring,
-                                    frag_wires, circuit_wires):
-
-    # identify the order of wires in the reconstructed probability distribution
-    combined_wire_order = [ ( frag_idx, qubit )
-                            for frag_idx, qubits in enumerate(frag_wires)
-                            for qubit in qubits
-                            if ( frag_idx, qubit ) not in frag_stitches.keys() ]
-
-    # determine the map from fragment wires to full-circuit wires
-    wire_map = frag_wire_map(circuit_wires, frag_wiring, frag_stitches)
-    return rearrange_wires(distribution, combined_wire_order, circuit_wires, wire_map)
+# get metadata for a reconstructed distribution:
+# (i) shape of the reconstructed distribution
+# (ii) type of the reconstructed distribution
+# (iii) type of the data contained in the reconstructed distribution
+def get_reconstruction_metadata(frag_dists):
+    reconstructed_dist_shape = ()
+    for frag_dist in frag_dists:
+        for _, dist in frag_dist:
+            reconstructed_dist_shape += tuple(dist.shape)
+            dist_obj_type = type(dist) # type of dist *itself*
+            dist_dat_type = dist.dtype # type of the data stored in dist
+            break
+    return reconstructed_dist_shape, dist_obj_type, dist_dat_type
 
 # collect all conditional distributions from fragments
-# with a given assignment of stitch operators
+# with a given assignment of operators at every stitch
 def collect_distribution_factors(frag_dists, frag_stitches, op_assignment):
     frag_exit_conds = [ set() for _ in range(len(frag_dists)) ]
     frag_init_conds = [ set() for _ in range(len(frag_dists)) ]
@@ -397,40 +372,92 @@ def collect_distribution_factors(frag_dists, frag_stitches, op_assignment):
              for frag_dist, init_conds, exit_conds
              in zip(frag_dists, frag_init_conds, frag_exit_conds) ]
 
+# return the order of output wires in a reconstructed distribution
+def reconstructed_wire_order(frag_wires, frag_stitches):
+    return [ ( frag_idx, wire )
+             for frag_idx, wires in enumerate(frag_wires)
+             for wire in wires if ( frag_idx, wire ) not in frag_stitches.keys() ]
+
+# return a dictionary mapping fragment output wires to the output wires of a circuit
+def frag_output_wire_map(circuit_wire_order, fragment_wiring, fragment_stitches):
+    wire_map = {}
+    for original_wire in circuit_wire_order:
+        frag_wire = fragment_wiring[original_wire]
+        while frag_wire in fragment_stitches:
+            frag_wire = fragment_stitches[frag_wire]
+        wire_map[frag_wire] = original_wire
+    return wire_map
+
+# determine the permutation of tensor factors taking an old wire order to a new wire order
+# old/new_wire_order are lists of wires in an old/desired order
+# wire_map is a dictionary identifying wires in old_wire_order with those in new_wire_order
+def axis_permutation(old_wire_order, new_wire_order, wire_map = None):
+    if wire_map is None: wire_map = { wire : wire for wire in old_wire_order }
+    output_wire_order = [ wire_map[wire] for wire in old_wire_order ]
+    wire_permutation = [ output_wire_order.index(wire) for wire in new_wire_order ]
+    return [ len(new_wire_order) - 1 - idx for idx in wire_permutation ][::-1]
+
+# get the permutation to apply to the tensor factors of a reconstructed distribution
+def reconstructed_axis_permutation(frag_stitches, frag_wiring, frag_wires,
+                                   circuit_wire_order):
+    output_wire_order = reconstructed_wire_order(frag_wires, frag_stitches)
+    output_wire_map = frag_output_wire_map(circuit_wire_order, frag_wiring, frag_stitches)
+    return axis_permutation(output_wire_order, circuit_wire_order, output_wire_map)
+
+# given the state at the end of a circuit,
+# get the state at the end of the output wires on each fragment
+def get_frag_states(state, frag_stitches, frag_wiring, frag_wires, circuit_wire_order):
+    frag_states = [ () for _ in range(len(frag_wires)) ]
+    output_wire_order = reconstructed_wire_order(frag_wires, frag_stitches)
+    output_wire_map = frag_output_wire_map(circuit_wire_order, frag_wiring, frag_stitches)
+    for frag_wire in output_wire_order:
+        state_idx = -circuit_wire_order.index(output_wire_map[frag_wire])-1
+        frag_states[frag_wire[0]] = (state[state_idx],) + frag_states[frag_wire[0]]
+    return frag_states
+
 # combine conditional distributions of fragments into a circuit distribution
 def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None,
-                                   frag_wires = None, circuit_wires = None,
+                                   frag_wires = None, circuit_wire_order = None,
                                    stitch_basis = SIC, return_probs = True,
-                                   status_updates = False):
+                                   discard_negative_terms = False,
+                                   query_state = None, status_updates = False):
+    reconstructing_distrubtion = not query_state
 
-    assert(( frag_wiring and frag_wires and circuit_wires ) or
-           ( not frag_wiring and not frag_wires and not circuit_wires ))
+    if reconstructing_distrubtion:
+        assert(( frag_wiring and frag_wires and circuit_wire_order ) or
+               ( not frag_wiring and not frag_wires and not circuit_wire_order ))
+    else: # only performing a state query
+        assert( frag_wiring and frag_wires and circuit_wire_order )
 
-    # determine the type and shape of the combined distributon
-    combined_dist_shape = ()
-    for frag_dist in frag_dists:
-        for _, dist in frag_dist:
-            dist_obj_type = type(dist) # type of dist *itself*
-            dist_dat_type = dist.dtype # type of the data stored in dist
-            combined_dist_shape += tuple(dist.shape)
-            break
+    # determine metadata for the reconstructed distribution
+    reconstructed_dist_shape, dist_obj_type, dist_dat_type \
+        = get_reconstruction_metadata(frag_dists)
 
-    # initialize an empty probability distribution
-    if dist_obj_type is tf.SparseTensor:
-        indices = np.empty((0,len(combined_dist_shape)))
-        values = tf.constant([], dtype = dist_dat_type)
-        combined_dist = tf.SparseTensor(indices, values, combined_dist_shape)
-    else:
-        combined_dist = tf.zeros(combined_dist_shape, dtype = dist_dat_type)
+    def _is_complex(tf_dtype):
+        return tf_dtype in [ tf.dtypes.complex64, tf.dtypes.complex128 ]
 
     # determine which operators to assign to stitches,
     # as well as the scalar factor associated with any given operator assignment
-    if dist_dat_type in [ tf.dtypes.complex64, tf.dtypes.complex128 ]:
-        # the conditional distributions are amplitudes
+    if _is_complex(dist_dat_type):
+
+        # the conditional distributions are amplitudes,
+        # so we only need to assign |0> and |1> states to stitches
         stitch_ops = range(2)
         def _scalar_factor(_): return 1
-        convert_amps_to_probs = return_probs
-    else:
+
+        # as a sanity check, make sure we aren't both
+        # (i) returning amplitudes and (ii) discarding negative terms
+        # doing so does not make sense
+        assert( not ( not return_probs and discard_negative_terms ))
+
+        # if we are returning probabilities, allow discarding negative terms when
+        #   reconstructing the overall probability distribution
+        # doing so requires converting all conditional amplitudes --> probabilities
+        if return_probs and discard_negative_terms:
+            frag_dists = [ frag_amps.to_probabilities() for frag_amps in frag_dists ]
+            _, dist_obj_type, dist_dat_type = get_reconstruction_metadata(frag_dists)
+
+    if not _is_complex(dist_dat_type):
         # the conditional distributions are probabilities
         if stitch_basis == SIC:
             stitch_ops = list(state_vecs_SIC.keys()) + [ "I" ]
@@ -440,7 +467,29 @@ def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None
             stitch_ops = list(state_vecs_ZXY.keys()) + [ "I" ]
             def _scalar_factor(op_assignment):
                 return (-1)**np.sum( op == "I" for op in op_assignment )
-        convert_amps_to_probs = False
+
+    if reconstructing_distrubtion:
+
+        # initialize an empty probability distribution
+        if dist_obj_type is tf.SparseTensor:
+            indices = np.empty((0,len(reconstructed_dist_shape)))
+            values = tf.constant([], dtype = dist_dat_type)
+            reconstructed_dist = tf.SparseTensor(indices, values, reconstructed_dist_shape)
+        else:
+            reconstructed_dist = tf.zeros(reconstructed_dist_shape, dtype = dist_dat_type)
+
+    else: # only performing a state query
+
+        state_val = 0 # initialize a zero value for the query
+
+        # figure out what state should be on the output of each fragment
+        frag_states = get_frag_states(query_state, frag_stitches, frag_wiring, frag_wires,
+                                      circuit_wire_order)
+
+    # if we are throwing out terms contributing to the overall probability distribution,
+    # then we need to keep track of the overall normalization of the distribution we get
+    if discard_negative_terms:
+        overall_normalization = 0
 
     # loop over all assigments of stitch operators at all cut locations
     for op_assignment in set_product(stitch_ops, repeat = len(frag_stitches)):
@@ -448,13 +497,50 @@ def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None
 
         # add to the combined distributions
         scalar_factor = _scalar_factor(op_assignment)
+        if discard_negative_terms and scalar_factor <= 0: continue
+
         dist_factors = collect_distribution_factors(frag_dists, frag_stitches, op_assignment)
-        combined_dist += scalar_factor * reduce(tf_outer_product, dist_factors[::-1])
 
-    if convert_amps_to_probs: combined_dist = abs(combined_dist)**2
+        if reconstructing_distrubtion:
+            reconstructed_dist += scalar_factor * reduce(tf_outer_product, dist_factors[::-1])
 
-    # if we did not provide wiring info, return the combined distribution as is
-    # otherwise, sort qubits appropriately
-    if frag_wiring is None: return combined_dist
-    return sort_reconstructed_distribution(combined_dist, frag_stitches,
-                                           frag_wiring, frag_wires, circuit_wires)
+        else: # only performing a state query
+            dist_state_iter = zip(dist_factors, frag_states)
+            state_val += scalar_factor * np.prod([ dist.numpy()[state]
+                                                   for dist, state in dist_state_iter ])
+
+        if discard_negative_terms:
+            overall_normalization \
+                += scalar_factor * np.prod([ tf.reduce_sum(dist).numpy()
+                                             for dist in dist_factors ])
+
+    if reconstructing_distrubtion:
+
+        # square amplitudes to get probabilities if appropriate
+        if return_probs and _is_complex(dist_dat_type):
+            reconstructed_dist = abs(reconstructed_dist)**2
+
+        # normalize the overall distribution if appropriate
+        if discard_negative_terms:
+            reconstructed_dist /= overall_normalization
+
+        # if we did not provide wiring info, return the combined distribution as is
+        # otherwise, sort wires/qubits appropriately
+        if frag_wiring is None:
+            return reconstructed_dist
+        else:
+            permutation = reconstructed_axis_permutation(frag_stitches, frag_wiring,
+                                                         frag_wires, circuit_wire_order)
+            return tf_transpose(reconstructed_dist, permutation)
+
+    else: # only performing a state query
+
+        # square amplitudes to get probabilities if appropriate
+        if return_probs and _is_complex(dist_dat_type):
+            state_val = abs(state_val)**2
+
+        # normalize the overall distribution if appropriate
+        if discard_negative_terms:
+            state_val /= overall_normalization
+
+        return state_val

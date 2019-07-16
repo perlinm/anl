@@ -22,6 +22,9 @@ print_circuits = False
 print_distributions = False
 print_recombination_updates = False
 
+# throw out negative terms when reconstructing a probability distribution?
+discard_negative_terms = False
+
 ##########################################################################################
 # construct circuit of random local 2-qubit gates that we can cut
 
@@ -119,6 +122,7 @@ frag_distributions \
 reconstructed_distribution \
     = combine_fragment_distributions(frag_distributions, frag_stitches, frag_wiring,
                                      frag_wires, circ_wires,
+                                     discard_negative_terms = discard_negative_terms,
                                      status_updates = print_recombination_updates)
 
 if print_distributions:
