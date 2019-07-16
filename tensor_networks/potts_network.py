@@ -54,6 +54,6 @@ def potts_network(lattice_shape, spokes, inv_temp, field = 0):
     normed_tensor = tensor / tensor_norm
     log_net_scale = np.prod(lattice_shape) * np.log(tensor_norm)
 
-    def tensor_bundle(idx): return normed_tensor
+    def tensor_bundle(_): return normed_tensor
     net, nodes, edges = cubic_network(lattice_shape, tensor_bundle)
     return net, nodes, edges, log_net_scale

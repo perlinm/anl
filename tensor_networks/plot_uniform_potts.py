@@ -14,6 +14,8 @@ show_figures = "show" in sys.argv[1:]
 
 show_figures = show_figures or not save_figures
 
+print_steps = True
+
 ##########################################################################################
 # compute and plot various quantities for the ising model
 ##########################################################################################
@@ -71,7 +73,7 @@ for size in sizes:
     volume = np.prod(lattice_shape)
 
     for jj in range(steps):
-        print(f" {size} : {jj} / {steps}")
+        if print_steps: print(f" {size} : {jj} / {steps}")
         net, nodes, _, log_net_scale \
             = potts_network(lattice_shape, spokes, inv_temps[jj])
         bubbler = cubic_bubbler(lattice_shape)
