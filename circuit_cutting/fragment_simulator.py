@@ -421,9 +421,9 @@ def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None
                                    stitch_basis = SIC, return_probs = True,
                                    discard_negative_terms = False,
                                    query_state = None, status_updates = False):
-    reconstructing_distrubtion = not query_state
+    reconstructing_distribution = not query_state
 
-    if reconstructing_distrubtion:
+    if reconstructing_distribution:
         assert(( frag_wiring and frag_wires and circuit_wire_order ) or
                ( not frag_wiring and not frag_wires and not circuit_wire_order ))
     else: # only performing a state query
@@ -468,7 +468,7 @@ def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None
             def _scalar_factor(op_assignment):
                 return (-1)**np.sum( op == "I" for op in op_assignment )
 
-    if reconstructing_distrubtion:
+    if reconstructing_distribution:
 
         # initialize an empty probability distribution
         if dist_obj_type is tf.SparseTensor:
@@ -501,7 +501,7 @@ def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None
 
         dist_factors = collect_distribution_factors(frag_dists, frag_stitches, op_assignment)
 
-        if reconstructing_distrubtion:
+        if reconstructing_distribution:
             reconstructed_dist += scalar_factor * reduce(tf_outer_product, dist_factors[::-1])
 
         else: # only performing a state query
@@ -514,7 +514,7 @@ def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None
                 += scalar_factor * np.prod([ tf.reduce_sum(dist).numpy()
                                              for dist in dist_factors ])
 
-    if reconstructing_distrubtion:
+    if reconstructing_distribution:
 
         # square amplitudes to get probabilities if appropriate
         if return_probs and _is_complex(dist_dat_type):
