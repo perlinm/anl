@@ -544,3 +544,10 @@ def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None
             state_val /= overall_normalization
 
         return state_val
+
+# todo:
+# -- don't loop over "I" in stitch assignment; instead, subtract it off of all other terms
+# -- write separate method for state query; allow query of many states
+# -- write method to pick samples from reconsturcted (full / positive) distributions
+# -- write method to convert sample histogram into "modified" sample histogram
+# -- write "identity subtractor" (?)
