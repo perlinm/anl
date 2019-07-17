@@ -18,7 +18,7 @@ def terminal_node(graph, qubit, termination_type):
             return node
 
 # accept a circuit graph (i.e. in DAG form), and return a list of tuples:
-# [ (<subgraph>, <list of wires used in this subgraph>) ]
+# [ (< subgraph >, < list of wires used in this subgraph >) ]
 # note that the subgraph circuits act on the full registers of the original graph circuit
 def disjoint_subgraphs(graph, zip_output = True):
     # identify all subgraphs of nodes
@@ -95,14 +95,11 @@ def trimmed_graph(graph, graph_wires = None, qreg_name = "q", creg_name = "c"):
 
 # accepts a circuit and cuts (wire, op_number), where op_number is
 #   the number of operations performed on the wire before the cut; returns:
-# (i) a list of subcircuits
-# (ii) a dictionary that identifies inputs to the original circuits with inputs of subcircuits:
-#      { <wire in the original circuit> :
-#        ( <index of subcircuit>, <wire in subcircuit> ) }
-# (iii) a dictionary identifying how subcircuits should be stitched together;
-#       this dictionary takes output wires of subcircuits to input wires of subcircuits:
-#      { ( <index of subcircuit>, <wire in subcircuit> ) :
-#        ( <index of subcircuit>, <wire in subcircuit> ) }
+# (i) a list of subcircuits (as qiskit QuantumCircuit objects)
+# (ii) a "path map", or a dictionary mapping a wire in the original circuit to
+#        a list of wires in subcircuits traversed by the original wire:
+#      { < wire in original circuit > :
+#        [ ( < index of subcircuit  >, < wire in subcircuit > ) ] }
 def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
     if len(cuts) == 0: return circuit.copy()
 
@@ -110,9 +107,11 @@ def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
     assert(all( type(wire[0]) is qs.circuit.quantumregister.QuantumRegister
                 for wire, _ in cuts ))
 
+    # all wires in the original circuit
+    circuit_wires = circuit.qubits + circuit.clbits
+
     # initialize new qubit register and construct total circuit graph
-    new_reg_name = "_".join(set( wire[0].prefix
-                                 for wire in circuit.qubits + circuit.clbits )) + "_new"
+    new_reg_name = "_".join(set( wire[0].prefix for wire in circuit_wires )) + "_new"
     new_register = qs.QuantumRegister(len(cuts),new_reg_name)
     new_wires = iter(new_register)
     graph = qs.converters.circuit_to_dag(circuit.copy())
@@ -123,7 +122,7 @@ def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
     graph.remove_all_ops_named("barrier")
 
     # tuples identifying which old/new wires to stitch together
-    stitches = set()
+    stitches = {}
 
     # loop over all cuts from last to first
     for cut_wire, cut_location in sorted(cuts, key = lambda cut : -cut[1]):
@@ -187,11 +186,11 @@ def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
                 node.qargs[node.qargs.index(cut_wire)] = new_wire
 
         # fix references to the cut wire in the set of stitches
-        stitches = { ( start if start != cut_wire else new_wire, end )
-                     for start, end in stitches }
+        stitches = { start if start != cut_wire else new_wire : end
+                     for start, end in stitches.items() }
 
         # identify the old/new wires to stitch together
-        stitches.add((cut_wire, new_wire))
+        stitches[cut_wire] = new_wire
 
     ### end loop over cuts
 
@@ -199,30 +198,28 @@ def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
     subgraphs, subgraph_wires = disjoint_subgraphs(graph, zip_output = False)
 
     # trim subgraphs, eliminating unused bits
-    trimmed_subgraphs, wire_maps \
+    trimmed_subgraphs, subgraph_wire_maps \
         = zip(*[ trimmed_graph(subgraph, wires, qreg_name, creg_name)
                  for subgraph, wires in zip(subgraphs, subgraph_wires) ])
 
-    # identify the subgraphs addressing the wires in each stitch
-    subgraph_stitches = {}
-    for wire_0, wire_1 in stitches:
-        index_0, index_1 = None, None
-        for subgraph_index, wires in enumerate(subgraph_wires):
-            if not index_0 and wire_0 in wires: index_0 = subgraph_index
-            if not index_1 and wire_1 in wires: index_1 = subgraph_index
-            if index_0 and index_1: break
-        wire_0 = wire_maps[index_0][wire_0]
-        wire_1 = wire_maps[index_1][wire_1]
-        subgraph_stitches[ index_0, wire_0 ] = ( index_1, wire_1 )
+    # construct a path map for bits (both quantum and classical) through
+    #   the "extended circuit" (i.e. original circuit with ancillas)
+    bit_path_map = { circuit_wire : [ circuit_wire ]
+                     for circuit_wire in circuit_wires }
+    for circuit_wire, path in bit_path_map.items():
+        while path[-1] in stitches.keys():
+            path.append(stitches[path[-1]])
 
-    # map each input wire in the original circuit to an input wire in subcircuits
-    subcircuit_wiring = {}
-    for subcircuit_index, wire_map in enumerate(wire_maps):
-        for in_wire, out_wire in wire_map.items():
-            if in_wire in circuit.qubits or in_wire in circuit.clbits:
-                subcircuit_wiring[in_wire] = (subcircuit_index, out_wire)
+    # construct a map from wires in the extended circuit to wires in the subcircuits
+    subcirc_wire_map = { extended_circuit_wire : ( subcirc_idx, subcirc_wire )
+                      for subcirc_idx, wire_map in enumerate(subgraph_wire_maps)
+                      for extended_circuit_wire, subcirc_wire in wire_map.items() }
+
+    # construct a path map for wires in the original circuit through subcirc wires
+    wire_path_map = { circuit_wire : tuple( subcirc_wire_map[wire] for wire in path )
+                      for circuit_wire, path in bit_path_map.items() }
 
     # convert the subgraphs into QuantumCircuit objects
     subcircuits = [ qs.converters.dag_to_circuit(graph)
                     for graph in trimmed_subgraphs ]
-    return subcircuits, subgraph_stitches, subcircuit_wiring
+    return subcircuits, wire_path_map

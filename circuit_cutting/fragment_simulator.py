@@ -37,31 +37,36 @@ def prep_gate(state):
 basis_gates = { basis : prep_gate(f"+{basis}").inverse()
                 for basis in [ "Z", "X", "Y" ] }
 
-def identify_init_exit_wires(frag_stitches, num_fragments):
-    '''
-    identify initialization and exit wires for each fragment
+# read a wire path map to identify init / exit wires for all fragments
+def identify_init_exit_wires(wire_path_map, num_fragments):
+    # collect all exit/init wires in format ( frag_index, wire )
+    all_init_wires = set()
+    all_exit_wires = set()
 
-    accepts:
-      (i) a dictionary of stitches
-      (ii) a total number of fragments
+    # loop over all paths to identify init/exit wires
+    for path in wire_path_map.values():
+        all_init_wires.update(path[1:])
+        all_exit_wires.update(path[:-1])
 
-    returns:
-      (i) a list of lists of "init_wires" (one list of wires for each fragment)
-      (ii) a list of lists of "exit_wires" (one list of wires for each fragment)
-    '''
-
-    # all exit/init wires: ( frag_index, wire )
-    exit_frag_wires_list, init_frag_wires_list = zip(*frag_stitches.items())
-
-    # collect exit/init wires into list indexed by a fragment number,
-    # removing the fragment index from the wire itself
-    init_wires = tuple([ [ frag_wire[1] for frag_wire in init_frag_wires_list
-                           if frag_wire[0] == frag_idx ]
+    # collect init/exit wires within each fragment, sorting them to fix their order
+    init_wires = tuple([ { wire for idx, wire in all_init_wires if idx == frag_idx }
                          for frag_idx in range(num_fragments) ])
-    exit_wires = tuple([ [ frag_wire[1] for frag_wire in exit_frag_wires_list
-                           if frag_wire[0] == frag_idx ]
+    exit_wires = tuple([ { wire for idx, wire in all_exit_wires if idx == frag_idx }
                          for frag_idx in range(num_fragments) ])
     return init_wires, exit_wires
+
+# identify all stitches in a cut-up circuit
+# note that circuit_wires is used to guarantee an order the stitches
+def identify_stitches(wire_path_map, circuit_wires):
+    stitches = {}
+    for wire in circuit_wires:
+        # identify all init/exit wires in the path of this wire
+        init_wires = wire_path_map[wire][1:]
+        exit_wires = wire_path_map[wire][:-1]
+        # add the stitches in this path
+        stitches.update({ exit_wire : init_wire
+                          for init_wire, exit_wire in zip(init_wires,exit_wires) })
+    return stitches
 
 # act with the given gates on the given qubits
 def act_gates(circuit, gates, *qubits):
@@ -158,6 +163,9 @@ def get_single_fragment_amplitudes(fragment, init_wires = None, exit_wires = Non
     exit_axes = { wire : -fragment.qubits.index(wire)-1 for wire in exit_wires }
     exit_wires = sorted(exit_wires, key = lambda wire : exit_axes[wire] )
 
+    # sort init wires to fix their order
+    init_wires = sorted(init_wires, key = lambda wire : fragment.qubits.index(wire))
+
     # for every choice of states prepared on all on init wires
     for init_states in set_product(range(2), repeat = len(init_wires)):
         init_conds = frozenset(zip(init_states, init_wires))
@@ -216,6 +224,9 @@ def get_single_fragment_probabilities(fragment, init_wires = None, exit_wires = 
     # and sort exit wires according to these axes
     exit_axes = { wire : -fragment.qubits.index(wire)-1 for wire in exit_wires }
     exit_wires = sorted(exit_wires, key = lambda wire : exit_axes[wire] )
+
+    # sort init wires to fix their order
+    init_wires = sorted(init_wires, key = lambda wire : fragment.qubits.index(wire))
 
     if init_op_basis == SIC:
         init_state_basis = list(state_vecs_SIC.keys())
@@ -303,40 +314,41 @@ def get_single_fragment_probabilities(fragment, init_wires = None, exit_wires = 
     return frag_dist
 
 # get amplitudes for a list of fragments
-def get_fragment_amplitudes(fragments, frag_stitches, **kwargs):
+def get_fragment_amplitudes(fragments, wire_path_map, **kwargs):
     # collect lists of initialization / exit wires for all fragments
-    init_wires, exit_wires = identify_init_exit_wires(frag_stitches, len(fragments))
+    init_wires, exit_wires = identify_init_exit_wires(wire_path_map, len(fragments))
 
     # compute conditional distributions over measurement outcomes for all fragments
     return [ get_single_fragment_amplitudes(ff, ii, ee, **kwargs)
              for ff, ii, ee in zip(fragments, init_wires, exit_wires) ]
 
 # get probabilities for a list of fragments
-def get_fragment_probabilities(fragments, frag_stitches,
+def get_fragment_probabilities(fragments, wire_path_map,
                                backend_simulator = "statevector_simulator",
                                init_op_basis = SIC, dtype = tf.float64, **kwargs):
     # collect lists of initialization / exit wires for all fragments
-    init_wires, exit_wires = identify_init_exit_wires(frag_stitches, len(fragments))
+    init_wires, exit_wires = identify_init_exit_wires(wire_path_map, len(fragments))
 
-    def _get_frag_probs(ff, ii, ee):
-        return get_single_fragment_probabilities(ff, ii, ee, backend_simulator,
-                                                 init_op_basis, dtype, **kwargs)
+    def _get_frag_probs(fragment, init_wires, exit_wires):
+        return get_single_fragment_probabilities(fragment, init_wires, exit_wires,
+                                                 backend_simulator, init_op_basis,
+                                                 dtype, **kwargs)
 
     # compute conditional distributions over measurement outcomes for all fragments
     return [ _get_frag_probs(ff, ii, ee)
              for ff, ii, ee in zip(fragments, init_wires, exit_wires) ]
 
 # get conditional amplitudes or probabilities as appropriate
-def get_fragment_distributions(fragments, frag_stitches,
+def get_fragment_distributions(fragments, wire_path_map,
                                backend_simulator = "statevector_simulator",
                                init_op_basis = SIC, dtype = tf.float64,
                                force_probs = False, **kwargs):
     if backend_simulator == "statevector_simulator":
-        frag_amplitudes = get_fragment_amplitudes(fragments, frag_stitches, **kwargs)
+        frag_amplitudes = get_fragment_amplitudes(fragments, wire_path_map, **kwargs)
         if not force_probs: return frag_amplitudes
         else: return [ amplitudes.to_probabilities() for amplitudes in frag_amplitudes ]
     else:
-        return get_fragment_probabilities(fragments, frag_stitches, backend_simulator,
+        return get_fragment_probabilities(fragments, wire_path_map, backend_simulator,
                                           init_op_basis, dtype, **kwargs)
 
 ##########################################################################################
@@ -359,10 +371,10 @@ def get_reconstruction_metadata(frag_dists):
 
 # collect all conditional distributions from fragments
 # with a given assignment of operators at every stitch
-def collect_distribution_factors(frag_dists, frag_stitches, op_assignment):
+def collect_distribution_factors(frag_dists, stitches, op_assignment):
     frag_exit_conds = [ set() for _ in range(len(frag_dists)) ]
     frag_init_conds = [ set() for _ in range(len(frag_dists)) ]
-    for stitch_idx, ( exit_frag_wire, init_frag_wire ) in enumerate(frag_stitches.items()):
+    for stitch_idx, ( exit_frag_wire, init_frag_wire ) in enumerate(stitches.items()):
         exit_frag_idx, exit_wire = exit_frag_wire
         init_frag_idx, init_wire = init_frag_wire
         frag_exit_conds[exit_frag_idx].add(( op_assignment[stitch_idx], exit_wire ))
@@ -373,20 +385,15 @@ def collect_distribution_factors(frag_dists, frag_stitches, op_assignment):
              in zip(frag_dists, frag_init_conds, frag_exit_conds) ]
 
 # return the order of output wires in a reconstructed distribution
-def reconstructed_wire_order(frag_wires, frag_stitches):
+def reconstructed_wire_order(wire_path_map, frag_wires):
+    _, exit_wires = identify_init_exit_wires(wire_path_map, len(frag_wires))
     return [ ( frag_idx, wire )
              for frag_idx, wires in enumerate(frag_wires)
-             for wire in wires if ( frag_idx, wire ) not in frag_stitches.keys() ]
+             for wire in wires if wire not in exit_wires[frag_idx] ]
 
 # return a dictionary mapping fragment output wires to the output wires of a circuit
-def frag_output_wire_map(circuit_wire_order, fragment_wiring, fragment_stitches):
-    wire_map = {}
-    for original_wire in circuit_wire_order:
-        frag_wire = fragment_wiring[original_wire]
-        while frag_wire in fragment_stitches:
-            frag_wire = fragment_stitches[frag_wire]
-        wire_map[frag_wire] = original_wire
-    return wire_map
+def frag_output_wire_map(wire_path_map):
+    return { path[-1] : wire for wire, path in wire_path_map.items() }
 
 # determine the permutation of tensor factors taking an old wire order to a new wire order
 # old/new_wire_order are lists of wires in an old/desired order
@@ -398,36 +405,28 @@ def axis_permutation(old_wire_order, new_wire_order, wire_map = None):
     return [ len(new_wire_order) - 1 - idx for idx in wire_permutation ][::-1]
 
 # get the permutation to apply to the tensor factors of a reconstructed distribution
-def reconstructed_axis_permutation(frag_stitches, frag_wiring, frag_wires,
-                                   circuit_wire_order):
-    output_wire_order = reconstructed_wire_order(frag_wires, frag_stitches)
-    output_wire_map = frag_output_wire_map(circuit_wire_order, frag_wiring, frag_stitches)
-    return axis_permutation(output_wire_order, circuit_wire_order, output_wire_map)
+def reconstructed_axis_permutation(wire_path_map, circuit_wires, frag_wires):
+    output_wires = reconstructed_wire_order(wire_path_map, frag_wires)
+    output_wire_map = frag_output_wire_map(wire_path_map)
+    return axis_permutation(output_wires, circuit_wires, output_wire_map)
 
 # given the state at the end of a circuit,
 # get the state at the end of the output wires on each fragment
-def get_frag_states(state, frag_stitches, frag_wiring, frag_wires, circuit_wire_order):
+def get_frag_states(state, wire_path_map, circuit_wires, frag_wires):
     frag_states = [ () for _ in range(len(frag_wires)) ]
-    output_wire_order = reconstructed_wire_order(frag_wires, frag_stitches)
-    output_wire_map = frag_output_wire_map(circuit_wire_order, frag_wiring, frag_stitches)
-    for frag_wire in output_wire_order:
-        state_idx = -circuit_wire_order.index(output_wire_map[frag_wire])-1
+    output_wires = reconstructed_wire_order(wire_path_map, frag_wires)
+    output_wire_map = frag_output_wire_map(wire_path_map)
+    for frag_wire in output_wires:
+        state_idx = -circuit_wires.index(output_wire_map[frag_wire])-1
         frag_states[frag_wire[0]] = (state[state_idx],) + frag_states[frag_wire[0]]
     return frag_states
 
 # combine conditional distributions of fragments into a circuit distribution
-def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None,
-                                   frag_wires = None, circuit_wire_order = None,
+def combine_fragment_distributions(frag_dists, wire_path_map, circuit_wires, frag_wires,
                                    stitch_basis = SIC, return_probs = True,
                                    discard_negative_terms = False,
                                    query_state = None, status_updates = False):
     reconstructing_distribution = not query_state
-
-    if reconstructing_distribution:
-        assert(( frag_wiring and frag_wires and circuit_wire_order ) or
-               ( not frag_wiring and not frag_wires and not circuit_wire_order ))
-    else: # only performing a state query
-        assert( frag_wiring and frag_wires and circuit_wire_order )
 
     # determine metadata for the reconstructed distribution
     reconstructed_dist_shape, dist_obj_type, dist_dat_type \
@@ -454,7 +453,7 @@ def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None
         #   reconstructing the overall probability distribution
         # doing so requires converting all conditional amplitudes --> probabilities
         if return_probs and discard_negative_terms:
-            frag_dists = [ frag_amps.to_probabilities() for frag_amps in frag_dists ]
+            frag_dists = [ amplitudes.to_probabilities() for amplitudes in frag_dists ]
             _, dist_obj_type, dist_dat_type = get_reconstruction_metadata(frag_dists)
 
     if not _is_complex(dist_dat_type):
@@ -483,23 +482,23 @@ def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None
         state_val = 0 # initialize a zero value for the query
 
         # figure out what state should be on the output of each fragment
-        frag_states = get_frag_states(query_state, frag_stitches, frag_wiring, frag_wires,
-                                      circuit_wire_order)
+        frag_states = get_frag_states(query_state, wire_path_map, circuit_wires, frag_wires)
 
     # if we are throwing out terms contributing to the overall probability distribution,
     # then we need to keep track of the overall normalization of the distribution we get
     if discard_negative_terms:
         overall_normalization = 0
 
-    # loop over all assigments of stitch operators at all cut locations
-    for op_assignment in set_product(stitch_ops, repeat = len(frag_stitches)):
+    # loop over all assigments of stitch operators at all cut locations (stitches)
+    stitches = identify_stitches(wire_path_map, circuit_wires)
+    for op_assignment in set_product(stitch_ops, repeat = len(stitches)):
         if status_updates: print(op_assignment)
 
         # add to the combined distributions
         scalar_factor = _scalar_factor(op_assignment)
         if discard_negative_terms and scalar_factor <= 0: continue
 
-        dist_factors = collect_distribution_factors(frag_dists, frag_stitches, op_assignment)
+        dist_factors = collect_distribution_factors(frag_dists, stitches, op_assignment)
 
         if reconstructing_distribution:
             reconstructed_dist += scalar_factor * reduce(tf_outer_product, dist_factors[::-1])
@@ -524,14 +523,9 @@ def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None
         if discard_negative_terms:
             reconstructed_dist /= overall_normalization
 
-        # if we did not provide wiring info, return the combined distribution as is
-        # otherwise, sort wires/qubits appropriately
-        if frag_wiring is None:
-            return reconstructed_dist
-        else:
-            permutation = reconstructed_axis_permutation(frag_stitches, frag_wiring,
-                                                         frag_wires, circuit_wire_order)
-            return tf_transpose(reconstructed_dist, permutation)
+        # sort wires/qubits appropriately before returning the distribution
+        perm = reconstructed_axis_permutation(wire_path_map, circuit_wires, frag_wires)
+        return tf_transpose(reconstructed_dist, perm)
 
     else: # only performing a state query
 
@@ -551,3 +545,6 @@ def combine_fragment_distributions(frag_dists, frag_stitches, frag_wiring = None
 # -- write method to pick samples from reconsturcted (full / positive) distributions
 # -- write method to convert sample histogram into "modified" sample histogram
 # -- write "identity subtractor" (?)
+
+
+# -- MIT QASM <--> Intel QS circuit simulation backend

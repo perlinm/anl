@@ -51,7 +51,7 @@ for idx, qubit in enumerate(qreg):
     circuit.u0(idx, qubit)
 
 cuts = [ (qreg[qubits//2], op+1) for op in range(1,2*layers) ]
-fragments, frag_stitches, frag_wiring = cut_circuit(circuit, *cuts)
+fragments, wire_path_map = cut_circuit(circuit, *cuts)
 
 circ_wires = circuit.qubits
 frag_wires = [ fragment.qubits for fragment in fragments ]
@@ -59,22 +59,24 @@ frag_wires = [ fragment.qubits for fragment in fragments ]
 if print_circuits:
     print("original circuit:")
     print(circuit)
-
     print()
+
     for jj, fragment in enumerate(fragments):
         print("fragment index:", jj)
         print(fragment)
-        print("--------------------")
+        print("-"*50)
+        print()
 
+    print("wire paths:")
     print()
-    print("fragment stitches:")
-    for old_wire, new_wire in sorted(frag_stitches.items()):
-        print(*old_wire, "-->", *new_wire)
-
+    for wire, path in wire_path_map.items():
+        if len(path) == 1:
+            print(wire, "-->", path[0])
+        if len(path) > 1:
+           print(wire, "-->")
+           for frag_wire in path:
+               print(" ", frag_wire[0], frag_wire[1])
     print()
-    print("fragment wiring:")
-    for old_wire, new_wire in sorted(frag_wiring.items()):
-        print(old_wire, "-->", *new_wire)
 
 ##########################################################################################
 # get distribution functions over measurement outcomes and print results
@@ -118,15 +120,13 @@ def relative_entropy(approx_dist, actual_dist):
 circuit_distribution = get_circuit_distribution(circuit)
 
 frag_distributions \
-    = get_fragment_distributions(fragments, frag_stitches, backend_simulator, shots = shots)
+    = get_fragment_distributions(fragments, wire_path_map, backend_simulator, shots = shots)
 reconstructed_distribution \
-    = combine_fragment_distributions(frag_distributions, frag_stitches, frag_wiring,
-                                     frag_wires, circ_wires,
+    = combine_fragment_distributions(frag_distributions, wire_path_map, circ_wires, frag_wires,
                                      discard_negative_terms = discard_negative_terms,
                                      status_updates = print_recombination_updates)
 
 if print_distributions:
-    print()
     print("full circuit probability distribution:")
     print(dist_text(circuit_distribution))
 
