@@ -203,13 +203,6 @@ def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
         = zip(*[ trimmed_graph(subgraph, wires, qreg_name, creg_name)
                  for subgraph, wires in zip(subgraphs, subgraph_wires) ])
 
-    # map each input wire in the original circuit to an input wire in subcircuits
-    subcircuit_wiring = {}
-    for subcircuit_index, wire_map in enumerate(wire_maps):
-        for in_wire, out_wire in wire_map.items():
-            if in_wire in circuit.qubits or in_wire in circuit.clbits:
-                subcircuit_wiring[in_wire] = (subcircuit_index, out_wire)
-
     # identify the subgraphs addressing the wires in each stitch
     subgraph_stitches = {}
     for wire_0, wire_1 in stitches:
@@ -220,9 +213,16 @@ def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
             if index_0 and index_1: break
         wire_0 = wire_maps[index_0][wire_0]
         wire_1 = wire_maps[index_1][wire_1]
-        subgraph_stitches[( index_0, wire_0 )] = ( index_1, wire_1 )
+        subgraph_stitches[ index_0, wire_0 ] = ( index_1, wire_1 )
+
+    # map each input wire in the original circuit to an input wire in subcircuits
+    subcircuit_wiring = {}
+    for subcircuit_index, wire_map in enumerate(wire_maps):
+        for in_wire, out_wire in wire_map.items():
+            if in_wire in circuit.qubits or in_wire in circuit.clbits:
+                subcircuit_wiring[in_wire] = (subcircuit_index, out_wire)
 
     # convert the subgraphs into QuantumCircuit objects
     subcircuits = [ qs.converters.dag_to_circuit(graph)
                     for graph in trimmed_subgraphs ]
-    return subcircuits, subcircuit_wiring, subgraph_stitches
+    return subcircuits, subgraph_stitches, subcircuit_wiring

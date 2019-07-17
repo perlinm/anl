@@ -34,7 +34,7 @@ layers = 3
 qreg = qs.QuantumRegister(qubits, "q")
 circuit = qs.QuantumCircuit(qreg)
 
-np.random.seed(seed)
+if seed is not None: np.random.seed(seed)
 def random_unitary():
     return qs.quantum_info.random.utils.random_unitary(4)
 
@@ -51,7 +51,7 @@ for idx, qubit in enumerate(qreg):
     circuit.u0(idx, qubit)
 
 cuts = [ (qreg[qubits//2], op+1) for op in range(1,2*layers) ]
-fragments, frag_wiring, frag_stitches = cut_circuit(circuit, *cuts)
+fragments, frag_stitches, frag_wiring = cut_circuit(circuit, *cuts)
 
 circ_wires = circuit.qubits
 frag_wires = [ fragment.qubits for fragment in fragments ]
@@ -67,14 +67,14 @@ if print_circuits:
         print("--------------------")
 
     print()
-    print("fragment wiring:")
-    for old_wire, new_wire in sorted(frag_wiring.items()):
-        print(old_wire, "-->", *new_wire)
-
-    print()
     print("fragment stitches:")
     for old_wire, new_wire in sorted(frag_stitches.items()):
         print(*old_wire, "-->", *new_wire)
+
+    print()
+    print("fragment wiring:")
+    for old_wire, new_wire in sorted(frag_wiring.items()):
+        print(old_wire, "-->", *new_wire)
 
 ##########################################################################################
 # get distribution functions over measurement outcomes and print results
