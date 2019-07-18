@@ -54,13 +54,6 @@ op_basis = { SIC : op_basis_SIC,
              IZXY : op_basis_IZXY,
              ZZXY : op_basis_ZZXY }
 
-def merge_conditions(init_conds, exit_conds):
-    init_conds = ( cond if len(cond) == 3 else (True,) + cond
-                   for cond in init_conds )
-    exit_conds = ( cond if len(cond) == 3 else (False,) + cond
-                   for cond in exit_conds )
-    return frozenset().union(init_conds, exit_conds)
-
 # general class for storing conditional distributions
 # note: class intended for inheritence by other classes, rather than for direct use
 class FragmentDistribution:
@@ -85,12 +78,19 @@ class FragmentDistribution:
     def all_distributions(self):
         return self._data_dict.values()
 
+    def _combine_conds(self, init_conds, exit_conds):
+        init_conds = ( cond if len(cond) == 3 else (True,) + cond
+                       for cond in init_conds )
+        exit_conds = ( cond if len(cond) == 3 else (False,) + cond
+                       for cond in exit_conds )
+        return frozenset().union(init_conds, exit_conds)
+
     # add data to the conditional distribution
     def add(self, *args):
         assert( len(args) in [ 2, 3 ] )
 
         if len(args) == 3:
-            conditions = merge_conditions(*args[:2])
+            conditions = self._combine_conds(*args[:2])
         else: # len(args) == 1:
             conditions = frozenset(args[0])
 
@@ -116,7 +116,7 @@ class FragmentProbabilities(FragmentDistribution):
     def __getitem__(self, conditions):
         if type(conditions) is tuple:
             assert( len(conditions) == 2 )
-            conditions = merge_conditions(*conditions)
+            conditions = self._combine_conds(*conditions)
         else:
             conditions = frozenset(conditions)
 
@@ -166,14 +166,15 @@ class FragmentProbabilities(FragmentDistribution):
                           for idx, vec in state_vecs_SIC.items() )
 
     # return conditional distribution with conditions in the {I,Z}ZXY bases
-    def _get_dist_ZXY(self, operator, _dist, full_basis):
-        assert( full_basis in [ IZXY, ZZXY ] )
+    def _get_dist_ZXY(self, operator, _dist, basis_completion):
+        assert( basis_completion in [ IZXY, ZZXY ] )
 
         # explicitly recognize standard ZXY and SIC operators by a string
-        if full_basis == IZXY:
+        if basis_completion == "IZXY":
             if operator == "-Z": return _dist("I") - _dist("+Z")
-        else: # full_basis == ZZXY
+        else: # basis_completion == "ZZXY"
             if operator == "I": return _dist("+Z") + _dist("-Z")
+
         if operator == "-X": return _dist("I") - _dist("+X")
         if operator == "-Y": return _dist("I") - _dist("+Y")
         if operator in state_vecs_SIC.keys():
@@ -201,7 +202,7 @@ class FragmentAmplitudes(FragmentDistribution):
     def __getitem__(self, conditions):
         if type(conditions) is tuple:
             assert( len(conditions) == 2 )
-            conditions = merge_conditions(*conditions)
+            conditions = self._combine_conds(*conditions)
         else:
             conditions = frozenset(conditions)
 
@@ -243,6 +244,7 @@ class FragmentAmplitudes(FragmentDistribution):
             if oper == "+Y": # | +Y > = ( | 0 > + i | 1 > ) / sqrt(2)
                 sign = 1 if not conjugate else -1
                 return [ ( 0, 1/np.sqrt(2) ), ( 1, sign*1j/np.sqrt(2) ) ]
+            else: assert( False ) # something went badly wrong if we made it here
 
         _dist_terms = { SIC : _dist_terms_SIC,
                         ZZXY : _dist_terms_ZZXY }
