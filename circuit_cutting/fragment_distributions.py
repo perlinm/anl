@@ -166,13 +166,13 @@ class FragmentProbabilities(FragmentDistribution):
                           for idx, vec in state_vecs_SIC.items() )
 
     # return conditional distribution with conditions in the {I,Z}ZXY bases
-    def _get_dist_ZXY(self, operator, _dist, basis_completion):
-        assert( basis_completion in [ IZXY, ZZXY ] )
+    def _get_dist_ZXY(self, operator, _dist, full_basis):
+        assert( full_basis in [ IZXY, ZZXY ] )
 
         # explicitly recognize standard ZXY and SIC operators by a string
-        if basis_completion == "IZXY":
+        if full_basis == IZXY:
             if operator == "-Z": return _dist("I") - _dist("+Z")
-        else: # basis_completion == "ZZXY"
+        else: # full_basis == ZZXY
             if operator == "I": return _dist("+Z") + _dist("-Z")
 
         if operator == "-X": return _dist("I") - _dist("+X")
@@ -244,7 +244,6 @@ class FragmentAmplitudes(FragmentDistribution):
             if oper == "+Y": # | +Y > = ( | 0 > + i | 1 > ) / sqrt(2)
                 sign = 1 if not conjugate else -1
                 return [ ( 0, 1/np.sqrt(2) ), ( 1, sign*1j/np.sqrt(2) ) ]
-            else: assert( False ) # something went badly wrong if we made it here
 
         _dist_terms = { SIC : _dist_terms_SIC,
                         ZZXY : _dist_terms_ZZXY }
