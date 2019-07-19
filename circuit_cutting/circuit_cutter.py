@@ -93,14 +93,15 @@ def trimmed_graph(graph, graph_wires = None, qreg_name = "q", creg_name = "c"):
 
     return qs.converters.circuit_to_dag(trimmed_circuit), register_map
 
-# accepts a circuit and cuts (wire, op_number), where op_number is
-#   the number of operations performed on the wire before the cut; returns:
+# accepts a circuit and list of cuts in the format (wire, op_number),
+#   where op_number is the number of operations performed on the wire before the cut
+# returns:
 # (i) a list of subcircuits (as qiskit QuantumCircuit objects)
 # (ii) a "path map", or a dictionary mapping a wire in the original circuit to
 #        a list of wires in subcircuits traversed by the original wire:
 #      { < wire in original circuit > :
 #        [ ( < index of subcircuit  >, < wire in subcircuit > ) ] }
-def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
+def cut_circuit(circuit, cuts, qreg_name = "q", creg_name = "c"):
     if len(cuts) == 0: return circuit.copy()
 
     # assert that all cut wires are part of a quantum register
@@ -186,7 +187,8 @@ def cut_circuit(circuit, *cuts, qreg_name = "q", creg_name = "c"):
                 node.qargs[node.qargs.index(cut_wire)] = new_wire
 
         # fix references to the cut wire in the set of stitches
-        stitches = { start if start != cut_wire else new_wire : end
+        stitches = { start if start != cut_wire else new_wire :
+                     end if end != cut_wire else new_wire
                      for start, end in stitches.items() }
 
         # identify the old/new wires to stitch together

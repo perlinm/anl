@@ -94,7 +94,7 @@ def get_circuit_amplitudes(circuit, **kwargs):
 
 # get a distribution over measurement outcomes for a circuit
 def get_circuit_probabilities(circuit, backend_simulator = "statevector_simulator",
-                              dtype = tf.float64, **kwargs):
+                              dtype = tf.float64, max_shots = 8192, **kwargs):
     if backend_simulator == "statevector_simulator":
         amplitudes = get_circuit_amplitudes(circuit, **kwargs)
         return tf.cast(abs(amplitudes)**2, dtype = dtype)
@@ -103,8 +103,8 @@ def get_circuit_probabilities(circuit, backend_simulator = "statevector_simulato
 
     if backend_simulator == "qasm_simulator":
         # identify current registers in the circuit
-        qubit_registers = [ wire[0] for wire in circuit.qubits if wire[1] == 0 ]
-        clbit_registers = [ wire[0] for wire in circuit.clbits if wire[1] == 0 ]
+        qubit_registers = [ register for register, bit in circuit.qubits if bit == 0 ]
+        clbit_registers = [ register for register, bit in circuit.clbits if bit == 0 ]
         all_registers = qubit_registers + clbit_registers
 
         # add measurements for all quantum registers
@@ -117,15 +117,33 @@ def get_circuit_probabilities(circuit, backend_simulator = "statevector_simulato
             circuit.measure(register, measurement_register)
 
         # simulate!
-        result = qs.execute(circuit, simulator, **kwargs).result()
-        state_counts = result.get_counts(circuit)
+        # In the case where we want to more shots than max_shots,
+        #   we must iteratively build our counts
+        total_shots = kwargs["shots"]
+        del kwargs["shots"]
+
+        state_counts = {}
+        shots_remaining = total_shots
+        while shots_remaining > 0:
+            # fire as many shots as we can, and update the nubmer of shots remaining
+            shots = min(max_shots, shots_remaining)
+            result = qs.execute(circuit, simulator, shots = shots, **kwargs).result()
+            shots_remaining -= shots
+
+            # Tally results in the state_counts dictionary
+            for state, counts in result.get_counts(circuit).items():
+                try:
+                    state_counts[state] += counts # add to state_counts if we can
+                except KeyError: # if `state` was not already in `state_counts`
+                    state_counts[state] = counts
 
         # collect results into a sparse tensor
-        indices = [ tuple( int(bit) for bit in state ) for state in state_counts.keys() ]
+        indices = [ tuple( int(bit) for bit in state )
+                    for state in state_counts.keys() ]
         values = list(state_counts.values())
         dense_shape = (2,)*len(circuit.clbits)
         sparse_counts = tf.SparseTensor(indices, values, dense_shape)
-        return tf.cast(tf.sparse.reorder(sparse_counts), dtype) / kwargs["shots"]
+        return tf.cast(tf.sparse.reorder(sparse_counts), dtype) / total_shots
 
     else:
         print("backend not supported:", backend_simulator)
@@ -489,7 +507,7 @@ def combine_fragment_distributions(frag_dists, wire_path_map, circuit_wires, fra
 
         # the conditional distributions are probabilities
 
-        # determien which operators to assign to each stitch
+        # determine which operators to assign to each stitch
         if stitch_basis == SIC:
             stitch_ops = list(state_vecs_SIC.keys())
             def _scalar_factor(op_assignment):
@@ -546,7 +564,7 @@ def combine_fragment_distributions(frag_dists, wire_path_map, circuit_wires, fra
             state_val += scalar_factor * np.prod([ dist.numpy()[state]
                                                    for dist, state in dist_state_iter ])
 
-        # keep trach of normalization if necessary
+        # keep track of normalization if necessary
         if discard_negative_terms:
             overall_normalization \
                 += scalar_factor * np.prod([ tf.reduce_sum(dist).numpy()

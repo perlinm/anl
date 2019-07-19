@@ -56,7 +56,7 @@ for idx, qubit in enumerate(qreg):
     circuit.u0(idx, qubit)
 
 cuts = [ (qreg[qubits//2], op+1) for op in range(1,2*layers) ]
-fragments, wire_path_map = cut_circuit(circuit, *cuts)
+fragments, wire_path_map = cut_circuit(circuit, cuts)
 
 circ_wires = tuple(circuit.qubits)
 frag_wires = tuple([ tuple(fragment.qubits) for fragment in fragments ])
