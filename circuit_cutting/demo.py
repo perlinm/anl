@@ -9,21 +9,24 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 tf.compat.v1.enable_v2_behavior()
 
 from circuit_cutter import cut_circuit
-from fragment_simulator import get_circuit_distribution, \
+from fragment_simulator import get_circuit_probabilities, \
     get_fragment_distributions, combine_fragment_distributions
 
 
 backend_simulator = "statevector_simulator"
 # backend_simulator = "qasm_simulator"
-shots = 10**5
+shots = 10**4
 seed = 0
 
 print_circuits = False
 print_distributions = False
-print_recombination_updates = False
+print_recombination_updates = True
 
 # throw out negative terms when reconstructing a probability distribution?
 discard_negative_terms = False
+
+# preprocess fragments to eliminate the identity ("I") stitch operator?
+use_subtraction_scheme = False
 
 ##########################################################################################
 # construct circuit of random local 2-qubit gates that we can cut
@@ -40,6 +43,7 @@ def random_unitary():
 
 for idx, qubit in enumerate(qreg):
     circuit.u0(idx, qubit)
+circuit.barrier()
 
 for layer in range(layers):
     for odd_links in range(2):
@@ -47,14 +51,15 @@ for layer in range(layers):
             random_gate = random_unitary()
             circuit.append(random_gate, [ qreg[jj], qreg[jj+1] ])
 
+circuit.barrier()
 for idx, qubit in enumerate(qreg):
     circuit.u0(idx, qubit)
 
 cuts = [ (qreg[qubits//2], op+1) for op in range(1,2*layers) ]
 fragments, wire_path_map = cut_circuit(circuit, *cuts)
 
-circ_wires = circuit.qubits
-frag_wires = [ fragment.qubits for fragment in fragments ]
+circ_wires = tuple(circuit.qubits)
+frag_wires = tuple([ tuple(fragment.qubits) for fragment in fragments ])
 
 if print_circuits:
     print("original circuit:")
@@ -71,11 +76,11 @@ if print_circuits:
     print()
     for wire, path in wire_path_map.items():
         if len(path) == 1:
-            print(wire, "-->", path[0])
+            print(wire, "-->", *path[0])
         if len(path) > 1:
            print(wire, "-->")
            for frag_wire in path:
-               print(" ", frag_wire[0], frag_wire[1])
+               print(" ", *frag_wire)
     print()
 
 ##########################################################################################
@@ -89,7 +94,8 @@ def to_str(vals):
 def dist_text(dist):
     if type(dist) is tf.SparseTensor:
         text_generator = ( f"{to_str(idx.numpy())} {val.numpy()}"
-                           for idx, val in zip(dist.indicses, dist.values) )
+
+                           for idx, val in zip(dist.indices, dist.values) )
     else:
         dist = dist.numpy()
         text_generator = ( f"{to_str(idx)} {dist[idx]}"
@@ -117,14 +123,16 @@ def relative_entropy(approx_dist, actual_dist):
     return tf.reduce_sum( dist_to_sum ).numpy() / np.log(2)
 
 
-circuit_distribution = get_circuit_distribution(circuit)
+circuit_distribution = get_circuit_probabilities(circuit)
 
 frag_distributions \
-    = get_fragment_distributions(fragments, wire_path_map, backend_simulator, shots = shots)
+    = get_fragment_distributions(fragments, wire_path_map, backend_simulator, shots = shots,
+                                 force_probs = True)
 reconstructed_distribution \
     = combine_fragment_distributions(frag_distributions, wire_path_map, circ_wires, frag_wires,
                                      discard_negative_terms = discard_negative_terms,
-                                     status_updates = print_recombination_updates)
+                                     status_updates = print_recombination_updates,
+                                     use_subtraction_scheme = use_subtraction_scheme)
 
 if print_distributions:
     print("full circuit probability distribution:")

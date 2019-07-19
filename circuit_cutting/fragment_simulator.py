@@ -11,6 +11,7 @@ tf.compat.v1.enable_v2_behavior()
 from tensorflow_extension import tf_outer_product, tf_transpose
 
 from itertools import product as set_product
+from itertools import combinations as set_combinations
 from functools import reduce
 from copy import deepcopy
 
@@ -92,8 +93,8 @@ def get_circuit_amplitudes(circuit, **kwargs):
     return tf.constant(state_vector, shape = (2,)*qubits)
 
 # get a distribution over measurement outcomes for a circuit
-def get_circuit_distribution(circuit, backend_simulator = "statevector_simulator",
-                             dtype = tf.float64, **kwargs):
+def get_circuit_probabilities(circuit, backend_simulator = "statevector_simulator",
+                              dtype = tf.float64, **kwargs):
     if backend_simulator == "statevector_simulator":
         amplitudes = get_circuit_amplitudes(circuit, **kwargs)
         return tf.cast(abs(amplitudes)**2, dtype = dtype)
@@ -266,8 +267,8 @@ def get_single_fragment_probabilities(fragment, init_wires = None, exit_wires = 
                              [ init_circuit ] + measurement_circuit)
 
             # get probability distribution over measurement outcomes
-            full_dist = get_circuit_distribution(circuit, backend_simulator,
-                                                 dtype = dtype, shots = int(total_shots))
+            full_dist = get_circuit_probabilities(circuit, backend_simulator,
+                                                  dtype = dtype, shots = int(total_shots))
 
             # project onto given exit-wire measurement outcomes
             for exit_bits in set_product(range(2), repeat = len(exit_wires)):
@@ -371,7 +372,8 @@ def get_reconstruction_metadata(frag_dists):
 
 # collect all conditional distributions from fragments
 # with a given assignment of operators at every stitch
-def collect_distribution_factors(frag_dists, stitches, op_assignment):
+def collect_distribution_factors(frag_dists, stitches, op_assignment,
+                                 use_subtraction_scheme = False):
     frag_exit_conds = [ set() for _ in range(len(frag_dists)) ]
     frag_init_conds = [ set() for _ in range(len(frag_dists)) ]
     for stitch_idx, ( exit_frag_wire, init_frag_wire ) in enumerate(stitches.items()):
@@ -380,9 +382,27 @@ def collect_distribution_factors(frag_dists, stitches, op_assignment):
         frag_exit_conds[exit_frag_idx].add(( op_assignment[stitch_idx], exit_wire ))
         frag_init_conds[init_frag_idx].add(( op_assignment[stitch_idx], init_wire ))
 
-    return [ frag_dist[init_conds, exit_conds]
-             for frag_dist, init_conds, exit_conds
-             in zip(frag_dists, frag_init_conds, frag_exit_conds) ]
+    dists = [ frag_dist[init_conds, exit_conds]
+              for frag_dist, init_conds, exit_conds
+              in zip(frag_dists, frag_init_conds, frag_exit_conds) ]
+
+    if not use_subtraction_scheme: return dists
+
+    # for every distribution f(M) with an init condition M,
+    #   take f(M) --> f(M) - 1/3 * f(I)
+    else:
+
+        for frag_idx in range(len(frag_dists)):
+            frag_dist = frag_dists[frag_idx]
+            init_conds = frag_init_conds[frag_idx]
+            exit_conds = frag_exit_conds[frag_idx]
+            for iden_num in range(1,len(init_conds)+1):
+                factor = (-1/3)**iden_num
+                for comb in set_combinations(init_conds, iden_num):
+                    new_comb = { ( "I", wire ) for _, wire in comb }
+                    new_init_conds = init_conds.difference(comb).union(new_comb)
+                    dists[frag_idx] += factor * frag_dist[new_init_conds, exit_conds]
+        return dists
 
 # return the order of output wires in a reconstructed distribution
 def reconstructed_wire_order(wire_path_map, frag_wires):
@@ -425,8 +445,17 @@ def get_frag_states(state, wire_path_map, circuit_wires, frag_wires):
 def combine_fragment_distributions(frag_dists, wire_path_map, circuit_wires, frag_wires,
                                    stitch_basis = SIC, return_probs = True,
                                    discard_negative_terms = False,
+                                   use_subtraction_scheme = False,
                                    query_state = None, status_updates = False):
     reconstructing_distribution = not query_state
+    include_negative_terms = not discard_negative_terms
+
+    # sanity check: if we are subtracting the identity operator at each stitch,
+    #   then we must be including negative terms
+    assert( not ( use_subtraction_scheme and discard_negative_terms ) )
+
+    # identify all cuts ("stitches" with a dictionary mapping exit wires to init wires
+    stitches = identify_stitches(wire_path_map, circuit_wires)
 
     # determine metadata for the reconstructed distribution
     reconstructed_dist_shape, dist_obj_type, dist_dat_type \
@@ -444,10 +473,10 @@ def combine_fragment_distributions(frag_dists, wire_path_map, circuit_wires, fra
         stitch_ops = range(2)
         def _scalar_factor(_): return 1
 
-        # as a sanity check, make sure we aren't both
-        # (i) returning amplitudes and (ii) discarding negative terms
-        # doing so does not make sense
-        assert( not ( not return_probs and discard_negative_terms ))
+        # sanity check: make sure that we are not both
+        # (i) discarding negative terms and (ii) returning amplitudes
+        # there are no "negative terms" if we are working with amplitudes
+        assert( include_negative_terms or return_probs )
 
         # if we are returning probabilities, allow discarding negative terms when
         #   reconstructing the overall probability distribution
@@ -457,15 +486,23 @@ def combine_fragment_distributions(frag_dists, wire_path_map, circuit_wires, fra
             _, dist_obj_type, dist_dat_type = get_reconstruction_metadata(frag_dists)
 
     if not _is_complex(dist_dat_type):
+
         # the conditional distributions are probabilities
+
+        # determien which operators to assign to each stitch
         if stitch_basis == SIC:
-            stitch_ops = list(state_vecs_SIC.keys()) + [ "I" ]
+            stitch_ops = list(state_vecs_SIC.keys())
             def _scalar_factor(op_assignment):
                 return np.product([ -1 if op == "I" else 3/2 for op in op_assignment ])
         else:
-            stitch_ops = list(state_vecs_ZXY.keys()) + [ "I" ]
+            stitch_ops = list(state_vecs_ZXY.keys())
             def _scalar_factor(op_assignment):
                 return (-1)**np.sum( op == "I" for op in op_assignment )
+
+        # if we are including negative terms and not using the identity operator
+        # subtraction scheme, then add "I" to the set of stitch operators
+        if include_negative_terms and not use_subtraction_scheme:
+            stitch_ops += [ "I" ]
 
     if reconstructing_distribution:
 
@@ -490,16 +527,17 @@ def combine_fragment_distributions(frag_dists, wire_path_map, circuit_wires, fra
         overall_normalization = 0
 
     # loop over all assigments of stitch operators at all cut locations (stitches)
-    stitches = identify_stitches(wire_path_map, circuit_wires)
     for op_assignment in set_product(stitch_ops, repeat = len(stitches)):
         if status_updates: print(op_assignment)
 
-        # add to the combined distributions
+        # identify the scalar factor associated with this assignment of stitch operators
         scalar_factor = _scalar_factor(op_assignment)
-        if discard_negative_terms and scalar_factor <= 0: continue
 
-        dist_factors = collect_distribution_factors(frag_dists, stitches, op_assignment)
+        # collect tensor factors of this term in the combined distribution
+        dist_factors = collect_distribution_factors(frag_dists, stitches, op_assignment,
+                                                    use_subtraction_scheme)
 
+        # add to the reconstructed distribution
         if reconstructing_distribution:
             reconstructed_dist += scalar_factor * reduce(tf_outer_product, dist_factors[::-1])
 
@@ -508,6 +546,7 @@ def combine_fragment_distributions(frag_dists, wire_path_map, circuit_wires, fra
             state_val += scalar_factor * np.prod([ dist.numpy()[state]
                                                    for dist, state in dist_state_iter ])
 
+        # keep trach of normalization if necessary
         if discard_negative_terms:
             overall_normalization \
                 += scalar_factor * np.prod([ tf.reduce_sum(dist).numpy()
@@ -540,11 +579,9 @@ def combine_fragment_distributions(frag_dists, wire_path_map, circuit_wires, fra
         return state_val
 
 # todo:
-# -- don't loop over "I" in stitch assignment; instead, subtract it off of all other terms
 # -- write separate method for state query; allow query of many states
 # -- write method to pick samples from reconsturcted (full / positive) distributions
 # -- write method to convert sample histogram into "modified" sample histogram
-# -- write "identity subtractor" (?)
-
+# -- write "identity subtractor" to minimize the weight of negative terms (?)
 
 # -- MIT QASM <--> Intel QS circuit simulation backend
