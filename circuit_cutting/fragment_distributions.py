@@ -14,7 +14,10 @@ from itertools import product as set_product
 from functools import reduce
 from copy import deepcopy
 
-SIC, IZXY, ZZXY = "SIC", "IZXY", "ZZXY" # define these to protect against typos
+# define common strings to protect against typos
+SIC = "SIC"
+IZXY = "IZXY"
+ZZXY = "ZZXY"
 
 def get_bloch_angles(vec):
     '''
@@ -46,6 +49,12 @@ state_vecs_ZXY = { "+Z" : (+1,0,0),
 
 # collect all string-identified state vectors into one dictionary
 state_vecs = dict(state_vecs_ZXY, **state_vecs_SIC)
+
+# define qubit operator vectors
+op_vecs = { "I" : (1,0,0,0),
+            "Z" : (0,1,0,0),
+            "X" : (0,0,1,0),
+            "Y" : (0,0,0,1) }
 
 op_basis_SIC = list(state_vecs_SIC.keys())
 op_basis_IZXY = [ "I", "+Z", "+X", "+Y" ]
@@ -150,50 +159,66 @@ class FragmentProbabilities(FragmentDistribution):
             return _get_dist(oper, _dist)
 
     # return conditional distribution with conditions in the SIC basis
-    def _get_dist_SIC(self, operator, _dist):
+    def _get_dist_SIC(self, oper, _dist):
 
-        # explicitly recognize the identity operator I by a string
-        if operator == "I":
-            return _dist((0,0,0)) * 2 # I = 2 * ( maximally mixed state )
+        # explicitly recognize standard qubit operators by a string
+        if oper in op_vecs.keys():
+            return _dist(op_vecs[oper])
 
-        # explicitly recognize ZXY basis elements by a string
-        if operator in state_vecs_ZXY.keys():
-            return _dist(state_vecs_ZXY[operator])
+        # explicitly recognize standard ZXY states by a string
+        if oper in state_vecs_ZXY.keys():
+            return _dist(state_vecs_ZXY[oper])
 
-        # return a distribution conditonal on an operator inside the bloch ball
-        assert( len(operator) == 3 )
-        return 1/4 * sum( ( 1 + 3 * np.dot(operator, vec) ) * _dist(idx)
+        # assert that we were given either a state or operator vector
+        assert( len(oper) in [ 3, 4 ])
+
+        # if we were given a state vector, convert it into an operator vector
+        if len(oper) == 3:
+            oper = (1/2,) + tuple([ val/2 for val in oper ])
+
+        # return a distribution conditonal on an operator vector
+        return 1/2 * sum( ( oper[0] + 3 * np.dot(oper[1:], vec) ) * _dist(idx)
                           for idx, vec in state_vecs_SIC.items() )
 
     # return conditional distribution with conditions in the {I,Z}ZXY bases
-    def _get_dist_ZXY(self, operator, _dist, full_basis):
+    def _get_dist_ZXY(self, oper, _dist, full_basis):
         assert( full_basis in [ IZXY, ZZXY ] )
 
-        # explicitly recognize standard ZXY and SIC operators by a string
+        # explicitly recognize standard ZXY and SIC states by a string
         if full_basis == IZXY:
-            if operator == "-Z": return _dist("I") - _dist("+Z")
+            if oper == "-Z": return _dist("I") - _dist("+Z")
         else: # full_basis == ZZXY
-            if operator == "I": return _dist("+Z") + _dist("-Z")
+            if oper == "I": return _dist("+Z") + _dist("-Z")
 
-        if operator == "-X": return _dist("I") - _dist("+X")
-        if operator == "-Y": return _dist("I") - _dist("+Y")
-        if operator in state_vecs_SIC.keys():
-            return _dist(state_vecs_SIC[operator])
+        if oper == "-X": return _dist("I") - _dist("+X")
+        if oper == "-Y": return _dist("I") - _dist("+Y")
+        if oper in state_vecs_SIC.keys():
+            return _dist(state_vecs_SIC[oper])
+
+        # explicitly recognize standard qubit operators by a string
+        if oper in op_vecs.keys():
+            return _dist(op_vecs[oper])
+
+        # assert that we were given either a state or operator vector
+        assert( len(oper) in [ 3, 4 ])
+
+        # if we were given a state vector, convert it into an operator vector
+        if len(oper) == 3:
+            oper = (1/2,) + tuple([ val/2 for val in oper ])
 
         # return a distribution conditonal on an operator inside the bloch ball
-        assert( len(operator) == 3 )
         directions_ZXY = [ "+Z", "+X", "+Y" ]
         dist_ZXY = sum( val * _dist(direction)
-                        for val, direction in zip(operator, directions_ZXY) )
-        return dist_ZXY + _dist("I") * ( 1 - sum(operator) ) / 2
+                        for val, direction in zip(oper[1:], directions_ZXY) )
+        return 2 * dist_ZXY + _dist("I") * ( oper[0] - sum(oper[1:]) )
 
     # return conditional distribution with conditions in the IZXY basis
-    def _get_dist_IZXY(self, operator, _dist):
-        return self._get_dist_ZXY(operator, _dist, IZXY)
+    def _get_dist_IZXY(self, oper, _dist):
+        return self._get_dist_ZXY(oper, _dist, IZXY)
 
     # return conditional distribution with conditions in the ZZXY basis
-    def _get_dist_ZZXY(self, operator, _dist):
-        return self._get_dist_ZXY(operator, _dist, ZZXY)
+    def _get_dist_ZZXY(self, oper, _dist):
+        return self._get_dist_ZXY(oper, _dist, ZZXY)
 
 # class for storing conditional amplitude distributions
 class FragmentAmplitudes(FragmentDistribution):
@@ -310,3 +335,6 @@ class FragmentAmplitudes(FragmentDistribution):
                 probs.add(prob_init_conds, prob_exit_conds, cond_probs)
 
         return probs
+
+# todo: make FragmentProbabilities object with "ops" conditions
+# todo: convert between FragmentProbabilities bases

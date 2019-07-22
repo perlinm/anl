@@ -25,9 +25,6 @@ print_recombination_updates = True
 # throw out negative terms when reconstructing a probability distribution?
 discard_negative_terms = False
 
-# preprocess fragments to eliminate the identity ("I") stitch operator?
-use_subtraction_scheme = False
-
 ##########################################################################################
 # construct circuit of random local 2-qubit gates that we can cut
 
@@ -128,11 +125,11 @@ circuit_distribution = get_circuit_probabilities(circuit)
 frag_distributions \
     = get_fragment_distributions(fragments, wire_path_map, backend_simulator, shots = shots,
                                  force_probs = True)
+
 reconstructed_distribution \
     = combine_fragment_distributions(frag_distributions, wire_path_map, circ_wires, frag_wires,
                                      discard_negative_terms = discard_negative_terms,
-                                     status_updates = print_recombination_updates,
-                                     use_subtraction_scheme = use_subtraction_scheme)
+                                     status_updates = print_recombination_updates)
 
 if print_distributions:
     print("full circuit probability distribution:")
