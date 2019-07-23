@@ -161,13 +161,11 @@ class FragmentProbabilities(FragmentDistribution):
     # return conditional distribution with conditions in the SIC basis
     def _get_dist_SIC(self, oper, _dist):
 
-        # explicitly recognize standard qubit operators by a string
+        # explicitly recognize standard operators by a string
         if oper in op_vecs.keys():
             return _dist(op_vecs[oper])
-
-        # explicitly recognize standard ZXY states by a string
-        if oper in state_vecs_ZXY.keys():
-            return _dist(state_vecs_ZXY[oper])
+        if oper in state_vecs.keys():
+            return _dist(state_vecs[oper])
 
         # assert that we were given either a state or operator vector
         assert( len(oper) in [ 3, 4 ])
@@ -192,12 +190,12 @@ class FragmentProbabilities(FragmentDistribution):
 
         if oper == "-X": return _dist("I") - _dist("+X")
         if oper == "-Y": return _dist("I") - _dist("+Y")
-        if oper in state_vecs_SIC.keys():
-            return _dist(state_vecs_SIC[oper])
 
-        # explicitly recognize standard qubit operators by a string
+        # explicitly recognize standard operators by a string
         if oper in op_vecs.keys():
             return _dist(op_vecs[oper])
+        if oper in state_vecs.keys():
+            return _dist(state_vecs[oper])
 
         # assert that we were given either a state or operator vector
         assert( len(oper) in [ 3, 4 ])
@@ -219,6 +217,7 @@ class FragmentProbabilities(FragmentDistribution):
     # return conditional distribution with conditions in the ZZXY basis
     def _get_dist_ZZXY(self, oper, _dist):
         return self._get_dist_ZXY(oper, _dist, ZZXY)
+
 
 # class for storing conditional amplitude distributions
 class FragmentAmplitudes(FragmentDistribution):
