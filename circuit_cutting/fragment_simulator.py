@@ -252,18 +252,24 @@ def get_single_fragment_probabilities(fragment, init_wires = None, exit_wires = 
         init_state_basis = list(state_vecs_ZXY.keys())
 
     # remember the number of shots we were told to run
-    shots_arg = kwargs["shots"]
+    shots = kwargs["shots"]
     del kwargs["shots"]
 
     # for every choice of states prepared on all on init wires
     for init_states in set_product(init_state_basis, repeat = len(init_wires)):
-        init_shots = shots_arg
+        init_shots = shots # number of shots for this set of init states
 
         if init_op_basis == SIC:
             init_dist = frag_dist
         else: # init_op_basis == IZXY
             init_dist = FragmentProbabilities(init_op_basis)
+
+            # if we are simulating with initial states polarized in - Z/X/Y
+            # then we are actually collecting data for an insertion of I,
+            # so we only need a third of the number of shots (per such state)
             init_shots /= 3**sum( state[0] == "-" for state in init_states )
+            if init_shots < 1 : continue
+            init_shots = int(init_shots + 0.5)
 
         # build circuit with the "input" states prepared appropriately
         init_conds = frozenset(zip(init_states, init_wires))
@@ -274,13 +280,6 @@ def get_single_fragment_probabilities(fragment, init_wires = None, exit_wires = 
         # for every choice of measurement bases on all on exit wires
         for exit_bases in set_product(basis_gates.keys(), repeat = len(exit_wires)):
 
-            # if we are simulating with initial states polarized in - Z/X/Y
-            # then we are actually collecting data for an insertion of I,
-            # so we only need a third of the number of shots (per such state)
-            total_shots \
-                = init_shots / 3**sum( state[0] == "-" for state in init_states )
-            if total_shots < 1: continue
-
             # build a circuit to measure in the correct bases
             measurement_circuit = [ act_gates(fragment, basis_gates[basis], wire)
                                     for wire, basis in zip(exit_wires, exit_bases) ]
@@ -289,7 +288,7 @@ def get_single_fragment_probabilities(fragment, init_wires = None, exit_wires = 
 
             # get probability distribution over measurement outcomes
             full_dist = get_circuit_probabilities(circuit, backend_simulator,
-                                                  dtype = dtype, shots = int(total_shots),
+                                                  dtype = dtype, shots = init_shots,
                                                   **kwargs)
 
             # project onto given exit-wire measurement outcomes
