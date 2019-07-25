@@ -12,9 +12,9 @@ from network_methods import cubic_network
 
 ##########################################################################################
 # methods for constructing a tensor network that represents the partition function
-#   of a classical q-state Potts model on a periodic primitive hypercubic lattice
+#   of a classical q-state clock model on a periodic primitive hypercubic lattice
 # hamiltonian: H = -\sum_{<j,k>} cos(s_j -s_k) - h \sum_j cos(s_j),
-# with s_j = 2\pi/q \times j; note that the ising model is a 2-state potts model
+# with s_j \in 2\pi/q \times \Z; note that the ising model is a 2-state potts model
 ##########################################################################################
 
 # construct a "bare" copy tensor to place at each vertex
@@ -48,7 +48,7 @@ def fused_vertex_tensor(neighbors, spokes, inv_temp, field):
     return T_V
 
 # construct tensor network on a periodic primitive hypercubic lattice
-def potts_network(lattice_shape, spokes, inv_temp, field = 0):
+def clock_network(lattice_shape, spokes, inv_temp, field = 0):
     tensor = fused_vertex_tensor(2*len(lattice_shape), spokes, inv_temp, field)
     tensor_norm = tf.norm(tensor)
     normed_tensor = tensor / tensor_norm

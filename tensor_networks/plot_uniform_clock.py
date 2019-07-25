@@ -4,7 +4,7 @@ import os, sys, scipy.optimize
 import numpy as np
 
 from network_methods import cubic_bubbler
-from potts_methods import potts_network
+from clock_methods import clock_network
 from contraction_methods import quantum_contraction, classical_contraction
 
 import matplotlib.pyplot as plt
@@ -75,7 +75,7 @@ for size in sizes:
     for jj in range(steps):
         if print_steps: print(f" {size} : {jj} / {steps}")
         net, nodes, _, log_net_scale \
-            = potts_network(lattice_shape, spokes, inv_temps[jj])
+            = clock_network(lattice_shape, spokes, inv_temps[jj])
         bubbler = cubic_bubbler(lattice_shape)
 
         if quantum_backend:
@@ -89,7 +89,7 @@ for size in sizes:
         if inv_temps[jj] == 0: continue
         small_field = small_value / inv_temps[jj]
         net, nodes, _, log_net_scale \
-            = potts_network(lattice_shape, spokes, inv_temps[jj], small_field)
+            = clock_network(lattice_shape, spokes, inv_temps[jj], small_field)
         bubbler = cubic_bubbler(lattice_shape)
 
         if quantum_backend:
