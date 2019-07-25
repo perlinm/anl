@@ -8,10 +8,7 @@ import tensorflow as tf
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 tf.compat.v1.enable_v2_behavior()
 
-from tensorflow_extension import tf_outer_product
-
 from itertools import product as set_product
-from functools import reduce
 from copy import deepcopy
 
 # define common strings to protect against typos
