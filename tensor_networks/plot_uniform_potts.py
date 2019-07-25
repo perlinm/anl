@@ -4,8 +4,8 @@ import os, sys, scipy.optimize
 import numpy as np
 
 from network_methods import cubic_bubbler
-from potts_network import potts_network
-from tensor_contraction import quantum_contraction, classical_contraction
+from potts_methods import potts_network
+from contraction_methods import quantum_contraction, classical_contraction
 
 import matplotlib.pyplot as plt
 
