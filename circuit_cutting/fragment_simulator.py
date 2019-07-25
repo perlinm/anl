@@ -15,7 +15,8 @@ from itertools import combinations as set_combinations
 from functools import reduce
 from copy import deepcopy
 
-from fragment_distributions import SIC, IZXY, state_vecs, state_vecs_SIC, op_vecs, \
+from fragment_distributions import SIC, IZXY, pauli, \
+    state_vecs_SIC, state_vecs_ZXY, state_vecs, pauli_vecs, \
     FragmentAmplitudes, FragmentProbabilities
 
 ##########################################################################################
@@ -215,8 +216,19 @@ def get_single_fragment_amplitudes(fragment, init_wires = None, exit_wires = Non
 # get probability distributions for a single fragment
 def get_single_fragment_probabilities(fragment, init_wires = None, exit_wires = None,
                                       backend_simulator = "statevector_simulator",
-                                      init_op_basis = SIC, dtype = tf.float64, **kwargs):
-    assert( init_op_basis in [ SIC, IZXY ] ) # todo(?): add support to ZZXY
+                                      init_basis = pauli, exit_basis = pauli,
+                                      dtype = tf.float64, **kwargs):
+    # save the bases in which we want to store init/exit conditions
+    final_init_basis = init_basis
+    final_exit_basis = exit_basis
+
+    # we can only actually *compute* distributions in certain bases,
+    # so if we weren't asked for one of those, choose one of them to use for now
+    if init_basis not in [ SIC, IZXY ]:
+        init_basis = SIC
+    if exit_basis != IZXY:
+        exit_basis = IZXY
+
     '''
     this method accepts:
       (i) a circuit fragment,
@@ -236,7 +248,7 @@ def get_single_fragment_probabilities(fragment, init_wires = None, exit_wires = 
         else: return [ state, "I" ]
 
     # initialize an empty conditional distribution over measurement outcomes
-    frag_dist = FragmentProbabilities(init_basis = init_op_basis)
+    frag_dist = FragmentProbabilities(init_basis = init_basis)
 
     # identify the axes we will project out for the exit wires
     # and sort exit wires according to these axes
@@ -246,9 +258,9 @@ def get_single_fragment_probabilities(fragment, init_wires = None, exit_wires = 
     # sort init wires to fix their order
     init_wires = sorted(init_wires, key = lambda wire : fragment.qubits.index(wire))
 
-    if init_op_basis == SIC:
+    if init_basis == SIC:
         init_state_basis = list(state_vecs_SIC.keys())
-    else: # init_op_basis == IZXY
+    else: # init_basis == IZXY
         init_state_basis = list(state_vecs_ZXY.keys())
 
     # remember the number of shots we were told to run
@@ -259,10 +271,10 @@ def get_single_fragment_probabilities(fragment, init_wires = None, exit_wires = 
     for init_states in set_product(init_state_basis, repeat = len(init_wires)):
         init_shots = shots # number of shots for this set of init states
 
-        if init_op_basis == SIC:
+        if init_basis == SIC:
             init_dist = frag_dist
-        else: # init_op_basis == IZXY
-            init_dist = FragmentProbabilities(init_op_basis)
+        else: # init_basis == IZXY
+            init_dist = FragmentProbabilities(init_basis)
 
             # if we are simulating with initial states polarized in - Z/X/Y
             # then we are actually collecting data for an insertion of I,
@@ -333,7 +345,13 @@ def get_single_fragment_probabilities(fragment, init_wires = None, exit_wires = 
                 init_conds = zip(init_ops, init_wires)
                 frag_dist.add(init_conds, exit_conds, dist / iden_fac)
 
-    return frag_dist
+    # if we computed distributions in the same init/exit bases as we were asked for,
+    #   then just return the conditional distribution we computed
+    # otherwise, change bases appropriately
+    if init_basis == final_init_basis and exit_basis == final_exit_basis:
+        return frag_dist
+    else:
+        return frag_dist.shuffle_bases(final_init_basis, final_exit_basis)
 
 # get amplitudes for a list of fragments
 def get_fragment_amplitudes(fragments, wire_path_map, **kwargs):
@@ -347,31 +365,29 @@ def get_fragment_amplitudes(fragments, wire_path_map, **kwargs):
 # get probabilities for a list of fragments
 def get_fragment_probabilities(fragments, wire_path_map,
                                backend_simulator = "statevector_simulator",
-                               init_op_basis = SIC, dtype = tf.float64, **kwargs):
+                               init_basis = pauli, exit_basis = pauli,
+                               dtype = tf.float64, **kwargs):
     # collect lists of initialization / exit wires for all fragments
     init_wires, exit_wires = identify_init_exit_wires(wire_path_map, len(fragments))
 
-    def _get_frag_probs(fragment, init_wires, exit_wires):
-        return get_single_fragment_probabilities(fragment, init_wires, exit_wires,
-                                                 backend_simulator, init_op_basis,
-                                                 dtype, **kwargs)
-
     # compute conditional distributions over measurement outcomes for all fragments
-    return [ _get_frag_probs(ff, ii, ee)
+    return [ get_single_fragment_probabilities(ff, ii, ee, backend_simulator,
+                                               init_basis, exit_basis, dtype, **kwargs)
              for ff, ii, ee in zip(fragments, init_wires, exit_wires) ]
 
 # get conditional amplitudes or probabilities as appropriate
 def get_fragment_distributions(fragments, wire_path_map,
                                backend_simulator = "statevector_simulator",
-                               init_op_basis = SIC, dtype = tf.float64,
+                               init_basis = pauli, exit_basis = pauli, dtype = tf.float64,
                                force_probs = False, **kwargs):
     if backend_simulator == "statevector_simulator":
         frag_amplitudes = get_fragment_amplitudes(fragments, wire_path_map, **kwargs)
         if not force_probs: return frag_amplitudes
-        else: return [ amplitudes.to_probabilities() for amplitudes in frag_amplitudes ]
+        else: return [ amplitudes.to_probabilities(init_basis, exit_basis)
+                       for amplitudes in frag_amplitudes ]
     else:
         return get_fragment_probabilities(fragments, wire_path_map, backend_simulator,
-                                          init_op_basis, dtype, **kwargs)
+                                          init_basis, exit_basis, dtype, **kwargs)
 
 ##########################################################################################
 # methods to combine conditional fragment distributions
@@ -487,7 +503,7 @@ def combine_fragment_distributions(frag_dists, wire_path_map, circuit_wires, fra
 
         if include_negative_terms:
             # ... and we are using the recombination formula directly
-            stitch_ops = list(op_vecs.keys())
+            stitch_ops = list(pauli_vecs.keys())
             scalar_factor = 1/2**len(stitches)
 
         else:
@@ -567,8 +583,6 @@ def combine_fragment_distributions(frag_dists, wire_path_map, circuit_wires, fra
         return scalar_factor * state_val
 
 # todo:
-# -- convert all conditions to "ops" or "SIC" as appropriate
-#      (depending on whether we remove negative terms)
 # -- write separate method for state query; allow query of many states
 # -- write method to pick samples from reconsturcted (full / positive) distributions
 # -- write method to convert sample histogram into "modified" sample histogram

@@ -18,6 +18,7 @@ from copy import deepcopy
 SIC = "SIC"
 IZXY = "IZXY"
 ZZXY = "ZZXY"
+pauli = "pauli"
 
 def get_bloch_angles(vec):
     '''
@@ -51,17 +52,19 @@ state_vecs_ZXY = { "+Z" : (+1,0,0),
 state_vecs = dict(state_vecs_ZXY, **state_vecs_SIC)
 
 # define qubit operator vectors
-op_vecs = { "I" : (1,0,0,0),
-            "Z" : (0,1,0,0),
-            "X" : (0,0,1,0),
-            "Y" : (0,0,0,1) }
+pauli_vecs = { "I" : (1,0,0,0),
+               "Z" : (0,1,0,0),
+               "X" : (0,0,1,0),
+               "Y" : (0,0,0,1) }
 
-op_basis_SIC = list(state_vecs_SIC.keys())
-op_basis_IZXY = [ "I", "+Z", "+X", "+Y" ]
-op_basis_ZZXY = [ "-Z", "+Z", "+X", "+Y" ]
-op_basis = { SIC : op_basis_SIC,
-             IZXY : op_basis_IZXY,
-             ZZXY : op_basis_ZZXY }
+basis_ops_SIC = list(state_vecs_SIC.keys())
+basis_ops_IZXY = [ "I", "+Z", "+X", "+Y" ]
+basis_ops_ZZXY = [ "-Z", "+Z", "+X", "+Y" ]
+basis_ops_pauli = list(pauli_vecs.keys())
+basis_ops = { SIC : basis_ops_SIC,
+              IZXY : basis_ops_IZXY,
+              ZZXY : basis_ops_ZZXY,
+              pauli : basis_ops_pauli }
 
 # general class for storing conditional distributions
 # note: class intended for inheritence by other classes, rather than for direct use
@@ -100,7 +103,7 @@ class FragmentDistribution:
 
         if len(args) == 3:
             conditions = self._combine_conds(*args[:2])
-        else: # len(args) == 1:
+        else: # len(args) == 2:
             conditions = frozenset(args[0])
 
         distribution = args[-1]
@@ -136,88 +139,95 @@ class FragmentProbabilities(FragmentDistribution):
         # otherwise, use available data to return the requested conditional distribution
         for is_input, oper, wire in conditions:
 
+            # get the basis in which we have stored data on the conditional distribution
             if is_input:
-                basis_to_check = self.init_basis
+                dist_basis = self.init_basis
             else:
-                basis_to_check = self.exit_basis
+                dist_basis = self.exit_basis
 
-            if basis_to_check == SIC:
-                if oper in op_basis_SIC: continue
-                _get_dist = self._get_dist_SIC
+            # if the requested operator at this stitch is already in the correct basis,
+            # then we have already stored data in the requested basis and we don't need to
+            # sum over different conditions, so move on to the next condition
+            if oper in basis_ops[dist_basis]: continue
 
-            elif basis_to_check == IZXY:
-                if oper in op_basis_IZXY: continue
-                _get_dist = self._get_dist_IZXY
-
-            elif basis_to_check == ZZXY:
-                if oper in op_basis_ZZXY: continue
-                _get_dist = self._get_dist_ZZXY
-
+            # build a method to replace this condition with a new one
             vacancy = conditions.difference({(is_input,oper,wire)})
-            def _dist(oper):
-                return self[vacancy.union({(is_input,oper,wire)})]
-            return _get_dist(oper, _dist)
+            def _dist(oper_str):
+                return self[vacancy.union({(is_input,oper_str,wire)})]
 
-    # return conditional distribution with conditions in the SIC basis
-    def _get_dist_SIC(self, oper, _dist):
+            # explicitly recognize standard operators by a string
+            if type(oper) is str:
 
-        # explicitly recognize standard operators by a string
-        if oper in op_vecs.keys():
-            return _dist(op_vecs[oper])
-        if oper in state_vecs.keys():
-            return _dist(state_vecs[oper])
+                # convert operator string to a state / operator vector
+                if oper in state_vecs.keys():
+                    oper = state_vecs[oper]
+                if oper in pauli_vecs.keys():
+                    oper = pauli_vecs[oper]
 
-        # assert that we were given either a state or operator vector
-        assert( len(oper) in [ 3, 4 ])
+            # convert 'oper' into an operator vector in the pauli basis
+            if type(oper) is not str:
 
-        # if we were given a state vector, convert it into an operator vector
-        if len(oper) == 3:
-            oper = (1/2,) + tuple([ val/2 for val in oper ])
+                # assert that we were given either a state vector or operator vector
+                assert( len(oper) in [ 3, 4 ])
 
-        # return a distribution conditonal on an operator vector
-        return 1/2 * sum( ( oper[0] + 3 * np.dot(oper[1:], vec) ) * _dist(idx)
-                          for idx, vec in state_vecs_SIC.items() )
+                # if we were given a state vector, convert it into an operator vector
+                if len(oper) == 3:
+                    oper = (1/2,) + tuple([ val/2 for val in oper ])
 
-    # return conditional distribution with conditions in the {I,Z}ZXY bases
-    def _get_dist_ZXY(self, oper, _dist, full_basis):
-        assert( full_basis in [ IZXY, ZZXY ] )
+            # identify the method to use to get coefficients
+            #   for the distributions that we collected data on
+            _get_coeffs = { SIC : self._get_coeffs_SIC,
+                            IZXY : self._get_coeffs_IZXY,
+                            ZZXY : self._get_coeffs_ZZXY,
+                            pauli : self._get_coeffs_pauli }
 
-        # explicitly recognize standard ZXY and SIC states by a string
-        if full_basis == IZXY:
-            if oper == "-Z": return _dist("I") - _dist("+Z")
-        else: # full_basis == ZZXY
-            if oper == "I": return _dist("+Z") + _dist("-Z")
+            # sum over distributions we collected data on with appropriate coefficients
+            op_coeffs = _get_coeffs[dist_basis](oper)
+            op_strs = basis_ops[dist_basis]
+            return sum( coeff * _dist(op_str)
+                        for coeff, op_str in zip(op_coeffs, op_strs)
+                        if coeff != 0 )
 
-        if oper == "-X": return _dist("I") - _dist("+X")
-        if oper == "-Y": return _dist("I") - _dist("+Y")
+    def _get_coeffs_SIC(self, op_vec):
+        return [ 1/2 * ( op_vec[0] + 3 * np.dot(op_vec[1:], vec) )
+                 for vec in state_vecs_SIC.values() ] # loop over all SIC state vectors
 
-        # explicitly recognize standard operators by a string
-        if oper in op_vecs.keys():
-            return _dist(op_vecs[oper])
-        if oper in state_vecs.keys():
-            return _dist(state_vecs[oper])
+    def _get_coeffs_IZXY(self, op_vec):
+        return [ op_vec[0] - sum(op_vec[1:]),  #  I
+                 2 * op_vec[1],                # +Z
+                 2 * op_vec[2],                # +X
+                 2 * op_vec[3] ]               # +Y
 
-        # assert that we were given either a state or operator vector
-        assert( len(oper) in [ 3, 4 ])
+    def _get_coeffs_ZZXY(self, op_vec):
+        return [ op_vec[0] - op_vec[1] - op_vec[2] - op_vec[3], # -Z
+                 op_vec[0] + op_vec[1] - op_vec[2] - op_vec[3], # +Z
+                 2 * op_vec[2],                                 # +X
+                 2 * op_vec[3] ]                                # +Y
 
-        # if we were given a state vector, convert it into an operator vector
-        if len(oper) == 3:
-            oper = (1/2,) + tuple([ val/2 for val in oper ])
+    def _get_coeffs_pauli(self, op_vec): return op_vec
 
-        # return a distribution conditonal on an operator inside the bloch ball
-        directions_ZXY = [ "+Z", "+X", "+Y" ]
-        dist_ZXY = sum( val * _dist(direction)
-                        for val, direction in zip(oper[1:], directions_ZXY) )
-        return 2 * dist_ZXY + _dist("I") * ( oper[0] - sum(oper[1:]) )
+    # change the bases in which we store conditional probabilities
+    def shuffle_bases(self, init_basis = pauli, exit_basis = pauli):
+        new_probs = FragmentProbabilities()
 
-    # return conditional distribution with conditions in the IZXY basis
-    def _get_dist_IZXY(self, oper, _dist):
-        return self._get_dist_ZXY(oper, _dist, IZXY)
+        # identify wires with init/exit conditions
+        for conditions, _ in self: break
+        init_wires = [ wire for is_init, _, wire in conditions if is_init ]
+        exit_wires = [ wire for is_init, _, wire in conditions if not is_init ]
 
-    # return conditional distribution with conditions in the ZZXY basis
-    def _get_dist_ZZXY(self, oper, _dist):
-        return self._get_dist_ZXY(oper, _dist, ZZXY)
+        # loop over all assignments of init/exit conditions in the appropriate bases
+        for init_ops in set_product(basis_ops[init_basis], repeat = len(init_wires)):
+            new_init_conds = [ ( True, init_op, init_wire )
+                               for init_op, init_wire in zip(init_ops, init_wires) ]
 
+            for exit_ops in set_product(basis_ops[exit_basis], repeat = len(exit_wires)):
+                new_exit_conds = [ ( False, exit_op, exit_wire )
+                                   for exit_op, exit_wire in zip(exit_ops, exit_wires) ]
+
+                new_probs.add(new_init_conds, new_exit_conds,
+                              self[new_init_conds, new_exit_conds])
+
+        return new_probs
 
 # class for storing conditional amplitude distributions
 class FragmentAmplitudes(FragmentDistribution):
@@ -245,20 +255,31 @@ class FragmentAmplitudes(FragmentDistribution):
                      self[_amp_dist(1)] * np.sin(theta/2) * np.exp(1j*phi) )
 
     # convert into a FragmentProbabilities object
-    def to_probabilities(self, init_basis = SIC, exit_basis = ZZXY, dtype = tf.float64):
-        assert( init_basis in [ SIC, ZZXY ] )
-        assert( exit_basis in [ SIC, ZZXY ] )
+    def to_probabilities(self, init_basis = pauli, exit_basis = pauli, dtype = tf.float64):
+        assert( init_basis in basis_ops.keys() )
+        assert( exit_basis in basis_ops.keys() )
+
+        # save the bases in which we want to store init/exit conditions
+        final_init_basis = init_basis
+        final_exit_basis = exit_basis
+
+        # we can only actually *compute* distributions in certain bases,
+        # so if we weren't asked for one of those, choose one of them to use for now
+        if init_basis not in [ SIC, ZZXY ]:
+            init_basis = ZZXY
+        if exit_basis not in [ SIC, ZZXY ]:
+            exit_basis = ZZXY
 
         # identify computational basis states and coefficients for each SIC / ZZXY state
         def _dist_terms_SIC(oper, conjugate):
-            assert( oper in op_basis_SIC )
+            assert( oper in basis_ops_SIC )
             sign = 1 if not conjugate else -1
             theta, phi = get_bloch_angles(state_vecs_SIC[oper])
             # | theta, phi > = cos(theta/2) |0> + exp(i phi) sin(theta/2) | 1 >
             return [ ( 0, np.cos(theta/2) ), ( 1, np.exp(sign*1j*phi) * np.sin(theta/2) ) ]
 
         def _dist_terms_ZZXY(oper, conjugate):
-            assert( oper in op_basis_ZZXY )
+            assert( oper in basis_ops_ZZXY )
             if oper == "-Z": # | -Z > = 1 | 1 >
                 return [ ( 1, 1 ) ]
             if oper == "+Z": # | +Z > = 1 | 0 >
@@ -274,8 +295,8 @@ class FragmentAmplitudes(FragmentDistribution):
 
         # determine which basis of operators to use for init/exit conditions,
         # as well as corresponding computational basis states / coefficients
-        init_op_basis = op_basis[init_basis]
-        exit_op_basis = op_basis[exit_basis]
+        init_basis_ops = basis_ops[init_basis]
+        exit_basis_ops = basis_ops[exit_basis]
         _init_dist_terms = _dist_terms[init_basis]
         _exit_dist_terms = _dist_terms[exit_basis]
 
@@ -289,7 +310,7 @@ class FragmentAmplitudes(FragmentDistribution):
         probs = FragmentProbabilities(init_basis, exit_basis)
 
         # loop over all init/exit conditions (init_states/exit_states)
-        for init_states in set_product(init_op_basis, repeat = len(init_wires)):
+        for init_states in set_product(init_basis_ops, repeat = len(init_wires)):
             # conditions (for probs) corresponding to this choice of init_states
             prob_init_conds = { ( True, state, wire )
                                 for state, wire in zip(init_states, init_wires) }
@@ -297,7 +318,7 @@ class FragmentAmplitudes(FragmentDistribution):
             # computational basis terms that contribute to this choice of init_states
             init_terms = [ _init_dist_terms(state, False) for state in init_states ]
 
-            for exit_states in set_product(exit_op_basis, repeat = len(exit_wires)):
+            for exit_states in set_product(exit_basis_ops, repeat = len(exit_wires)):
                 prob_exit_conds = { ( False, state, wire )
                                     for state, wire in zip(exit_states, exit_wires) }
 
@@ -333,7 +354,10 @@ class FragmentAmplitudes(FragmentDistribution):
                 cond_probs = tf.cast(abs(state_amps)**2, dtype = dtype)
                 probs.add(prob_init_conds, prob_exit_conds, cond_probs)
 
-        return probs
-
-# todo: make FragmentProbabilities object with "ops" conditions
-# todo: convert between FragmentProbabilities bases
+        # if we computed distributions in the same init/exit bases as we were asked for,
+        #   then just return the conditional distribution we computed
+        # otherwise, change bases appropriately
+        if init_basis == final_init_basis and exit_basis == final_exit_basis:
+            return probs
+        else:
+            return probs.shuffle_bases(final_init_basis, final_exit_basis)

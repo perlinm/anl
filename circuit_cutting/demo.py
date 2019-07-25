@@ -14,8 +14,8 @@ from fragment_simulator import get_circuit_probabilities, \
 
 from demo_methods import *
 
-# backend_simulator = "statevector_simulator"
-backend_simulator = "qasm_simulator"
+backend_simulator = "statevector_simulator"
+# backend_simulator = "qasm_simulator"
 
 # number of shots per condition on each fragment
 # irrelevant if using the statevector simulator
@@ -23,7 +23,7 @@ shots = 10**4
 
 # some printing options
 print_circuits = True
-print_distributions = True
+print_distributions = False
 print_recombination_updates = True
 
 # throw out negative terms when reconstructing a probability distribution?
@@ -37,14 +37,12 @@ force_probabilities = False
 seed = 0
 
 # numer of qubits and layers in the random unitary circuit
-qubits = 10
-layers = 2
+qubits = 20
+layers = 3
 
 ##########################################################################################
 # build and cut a random unitary circuit
-
 circuit = random_circuit(qubits, layers, seed)
-
 cuts = [ (circuit.qubits[qubits//2], op+1) for op in range(1,2*layers) ]
 fragments, wire_path_map = cut_circuit(circuit, cuts)
 
@@ -64,9 +62,7 @@ circuit_distribution = get_circuit_probabilities(circuit, seed_simulator = seed)
 
 frag_distributions \
     = get_fragment_distributions(fragments, wire_path_map, backend_simulator, shots = shots,
-                                 seed_simulator = seed, seed_transpiler = seed,
-                                 force_probs = True)
-
+                                 seed_simulator = seed, seed_transpiler = seed)
 reconstructed_distribution \
     = combine_fragment_distributions(frag_distributions, wire_path_map, circ_wires, frag_wires,
                                      discard_negative_terms = discard_negative_terms,
