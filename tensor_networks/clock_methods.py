@@ -68,6 +68,7 @@ def clock_network(lattice_shape, spokes, inv_temp, field = 0, use_vertex = True)
         tensor = vertex_tensor(2*len(lattice_shape), spokes, inv_temp, field)
         tensor_num = np.prod(lattice_shape)
     else:
+        assert(all( num % 2 == 0 for num in lattice_shape ))
         tensor = checkerboard_tensor(len(lattice_shape), spokes, inv_temp, field)
         tensor_num = np.prod(lattice_shape) / 2**(len(lattice_shape)-1)
 
