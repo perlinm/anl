@@ -33,19 +33,25 @@ def temp_vec(spokes, idx, inv_temp):
     return tf.constant(vec) / np.sqrt(spokes)
 
 # vertex tensor in the cubic tensor network of the clock model
-def vertex_tensor(dimension, spokes, inv_temp, field):
+def vertex_tensor(neighbors, spokes, inv_temp, field):
     return sum( np.exp(inv_temp*field * np.cos(idx*2*np.pi/spokes))
-                * tensor_power(temp_vec(spokes, idx, inv_temp), 2*dimension)
+                * tensor_power(temp_vec(spokes, idx, inv_temp), neighbors)
                 for idx in range(spokes) )
 
 # checkerboard tensor in the checkerboard tensor network of the clock model
 def checkerboard_tensor(dimension, spokes, inv_temp, field):
-    assert(dimension == 2) # only allow 2-D for now
+    def _shift_idx(idx, direction):
+        return ( idx + 2**direction ) % 2**dimension
+
+    def _angle_diff(angles,idx,direction):
+        return angles[idx] - angles[_shift_idx(idx,direction)]
 
     def _tensor_factor(idx, angle_vals):
         angles = np.array(angle_vals) * 2*np.pi/spokes
-        scalar = np.exp( inv_temp * field/2 * np.cos(angles[idx]) +
-                         inv_temp * np.cos(angles[idx]-angles[(idx+1)%4]) )
+        site_term =  field / dimension * np.cos(angles[idx])
+        edge_term = sum( np.cos(_angle_diff(angles,idx,direction))
+                         for direction in range(dimension) ) / 2
+        scalar = np.exp(inv_temp * ( site_term + edge_term ))
         return tf.one_hot(angle_vals[idx], spokes, on_value = scalar)
 
     def _tensor_term(angle_vals):
@@ -54,16 +60,16 @@ def checkerboard_tensor(dimension, spokes, inv_temp, field):
         return reduce(tf_outer_product, tensor_factors)
 
     return sum( _tensor_term(angle_vals)
-                for angle_vals in set_product(range(spokes), repeat = 4) )
+                for angle_vals in set_product(range(spokes), repeat = 2**dimension) )
 
 # construct tensor network on a periodic primitive hypercubic lattice
 def clock_network(lattice_shape, spokes, inv_temp, field = 0, use_vertex = True):
     if use_vertex:
-        tensor = vertex_tensor(len(lattice_shape), spokes, inv_temp, field)
+        tensor = vertex_tensor(2*len(lattice_shape), spokes, inv_temp, field)
         tensor_num = np.prod(lattice_shape)
     else:
         tensor = checkerboard_tensor(len(lattice_shape), spokes, inv_temp, field)
-        tensor_num = np.prod(lattice_shape)/2
+        tensor_num = np.prod(lattice_shape) / 2**(len(lattice_shape)-1)
 
     tensor_norm = tf.norm(tensor)
     normed_tensor = tensor / tensor_norm
