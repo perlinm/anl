@@ -3,7 +3,7 @@
 import os, sys, scipy.optimize
 import numpy as np
 
-from network_methods import cubic_bubbler
+from network_methods import cubic_bubbler, checkerboard_bubbler
 from clock_methods import clock_network
 from contraction_methods import quantum_contraction, classical_contraction
 
@@ -90,7 +90,6 @@ for size in sizes:
         small_field = small_value / inv_temps[jj]
         net, nodes, _, log_net_scale \
             = clock_network(lattice_shape, spokes, inv_temps[jj], small_field)
-        bubbler = cubic_bubbler(lattice_shape)
 
         if quantum_backend:
             log_prob, log_norm = quantum_contraction(nodes, bubbler)
@@ -107,16 +106,18 @@ for size in sizes:
     plt.ylabel(r"$\log Z/V$")
     plt.ylim(0, plt.gca().get_ylim()[-1])
 
+    def _diff(vals): return vals[1:] - vals[:-1]
+
     # energy density
     mid_inv_temps = ( inv_temps[1:] + inv_temps[:-1] ) / 2
-    energy = - ( log_Z[1:] - log_Z[:-1] ) / ( inv_temps[1:] - inv_temps[:-1] )
+    energy = - _diff(log_Z) / _diff(inv_temps) # d \log Z / d \beta
     plt.figure("energy", figsize = figsize)
     plt.plot(mid_inv_temps / crit_inv_temp, energy / volume, ".", label = f"$N={size}$")
     plt.ylabel(r"$\Braket{E}/V$")
 
     # heat_capacity
     mid_mid_inv_temps = ( mid_inv_temps[1:] + mid_inv_temps[:-1] ) / 2
-    heat_capacity = ( energy[1:] - energy[:-1] ) / ( mid_inv_temps[1:] - mid_inv_temps[:-1] )
+    heat_capacity = _diff(energy) / _diff(1/mid_inv_temps) # d E / d T
     plt.figure("heat_capacity", figsize = figsize)
     plt.plot(mid_mid_inv_temps / crit_inv_temp, heat_capacity / volume, ".", label = f"$N={size}$")
     plt.ylabel(r"$C_V/V$")
