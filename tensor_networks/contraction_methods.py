@@ -9,6 +9,8 @@ tf.compat.v1.enable_v2_behavior()
 import tensornetwork as tn
 from tensornetwork.contractors import greedy_contractor
 
+from linalg_methods import to_unitary
+
 # return an indexed pure state in a space with a given tensor product structure (shape)
 def idx_state(index, shape, dtype = tf.float64):
     dim = max(np.prod(shape, dtype = int), 1)
@@ -46,44 +48,6 @@ def get_edge_info(node, eaten_nodes):
             out_edges.append(edge)
             out_op_idx.append(axis_to_other)
     return inp_edges, inp_op_idx, out_edges, out_op_idx
-
-# convert an isometry T : A --> B into a unitary operator U : A_B --> A_B
-# where the dimensions |A_B| = |B| and A_B = A \otimes ancillas
-def to_unitary(isometry):
-    assert(len(isometry.shape) == 2)
-    trgt_dim, base_dim = isometry.shape # dimensions of base and target spaces A and B
-    if trgt_dim == base_dim: return isometry
-
-    # identity operator on the target space B, and projector onto T(A)
-    identity = tf.eye(trgt_dim, dtype = isometry.dtype)
-    trgt_projector = tf.linalg.matmul(isometry, isometry, adjoint_b = True)
-
-    # isometry V : A --> A_B defined by V(a) = a \otimes ancillas,
-    # and a projector onto V(A)
-    base_vecs = tf.eye(*isometry.shape, dtype = isometry.dtype)
-    base_projector = tf.linalg.matmul(base_vecs, base_vecs, transpose_b = True)
-
-    # construct a minimal unitary rotating V(A) into *T(A),
-    # where * denotes an embedding of B into A_B
-    trgt_reflector = identity - 2 * trgt_projector
-    base_reflector = identity - 2 * base_projector
-    minimal_unitary = tf.linalg.sqrtm(tf.linalg.matmul(trgt_reflector, base_reflector))
-
-    # the minimal unitary U* above only gives us U : A_B --> A_B
-    #   up to some rotation R of the standard basis on A; identify the basis rotation R
-    base_rot = tf.matmul(minimal_unitary, isometry, adjoint_a = True)[:base_dim,:base_dim]
-
-    # lift the rotation R in A to a rotation R* in A_B via R* = V \circ R
-    ancilla_dim = trgt_dim // base_dim
-    ancilla_identity = tf.eye(ancilla_dim, dtype = isometry.dtype)
-    trgt_rot = tf.tensordot(ancilla_identity, base_rot, axes = 0) # <-- this is R*
-
-    # rearrange the indices in R* properly
-    trgt_rot = tf.transpose(trgt_rot, [ 0, 2, 1, 3 ])
-    trgt_rot = tf.reshape(trgt_rot, (trgt_dim,)*2)
-
-    # return U = U* R*
-    return tf.matmul(minimal_unitary, trgt_rot)
 
 # simulate the contracting of a tensor network using a computer
 # uses the method described in arxiv.org/abs/0805.0040
