@@ -11,7 +11,7 @@ from functools import reduce
 
 # outer product of two tensors
 def tf_outer_product(tensor_a, tensor_b):
-        return tf.tensordot(tensor_a, tensor_b, axes = 0)
+    return tf.tensordot(tensor_a, tensor_b, axes = 0)
 
 # return the power-fold tensor power of a tensor
 def tensor_power(tensor, power):

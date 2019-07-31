@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
 
 import numpy as np
-
-import os
-import tensorflow as tf
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
-tf.compat.v1.enable_v2_behavior()
 import tensornetwork as tn
-
 from itertools import product as set_product
 
 # construct a tensor network with a translationally-invariant (crystal) structure

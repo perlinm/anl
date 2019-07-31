@@ -166,7 +166,7 @@ def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.
 # accepts both a TensorNetwork object and a bubbler as input
 # same outputs as quantum_contraction
 def classical_contraction(net, nodes, bubbler = None):
-    if bubbler is None: bubbler = nodes.key()
+    if bubbler is None: bubbler = nodes.keys()
     log_net_norm = 0
     eaten_nodes = set()
     dangling_edges = []
