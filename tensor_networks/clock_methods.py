@@ -60,18 +60,19 @@ def checkerboard_tensor(dimension, spokes, inv_temp, field):
 def clock_network(lattice_shape, spokes, inv_temp, field = 0, use_vertex = True):
     if use_vertex:
         tensor = vertex_tensor(len(lattice_shape), spokes, inv_temp, field)
+        tensor_num = np.prod(lattice_shape)
     else:
         tensor = checkerboard_tensor(len(lattice_shape), spokes, inv_temp, field)
+        tensor_num = np.prod(lattice_shape)/2
 
     tensor_norm = tf.norm(tensor)
     normed_tensor = tensor / tensor_norm
+    log_net_scale = tensor_num * np.log(tensor_norm)
     def tensor_bundle(_): return normed_tensor
 
     if use_vertex:
         net, nodes, edges = cubic_network(lattice_shape, tensor_bundle)
-        log_net_scale = np.prod(lattice_shape) * np.log(tensor_norm)
     else:
         net, nodes, edges = checkerboard_network(lattice_shape, tensor_bundle)
-        log_net_scale = 1/2 * np.prod(lattice_shape) * np.log(tensor_norm)
 
     return net, nodes, edges, log_net_scale
