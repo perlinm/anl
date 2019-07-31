@@ -8,36 +8,64 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 tf.compat.v1.enable_v2_behavior()
 import tensornetwork as tn
 
-# construct tensor network on a periodic primitive hypercubic lattice
-def cubic_network(lattice_shape, tensor_bundle):
+# construct a tensor network with a translationally-invariant (crystal) structure
+def crystal_network(lattice_shape, tensor_bundle, lattice_vectors):
 
     lattice_dim = len(lattice_shape) # dimension of lattice
     net = tn.TensorNetwork() # initialize empty tensor network
 
+    # add vectors on the periodic lattice
+    periodicity = np.array(lattice_shape)
+    def _add_vecs(loc, shift):
+        return tuple( ( np.array(loc) + np.array(shift) ) % periodicity )
+
+    # identify all tensor locations
+    tensor_locations = [ (0,)*len(lattice_shape) ]
+    for lattice_vector in lattice_vectors:
+        for base_loc in tensor_locations:
+            new_loc = _add_vecs(base_loc, lattice_vector)
+            if new_loc not in tensor_locations:
+                tensor_locations.append(new_loc)
+            else: break
+
     # make all nodes, indexed by lattice coorinates
-    nodes = { node_idx : net.add_node(tensor_bundle(node_idx), name = str(node_idx))
-              for node_idx in np.ndindex(lattice_shape) }
+    nodes = { node_loc : net.add_node(tensor_bundle(node_loc), name = str(node_loc))
+              for node_loc in tensor_locations }
 
     # make all edges, indexed by pairs of lattice coordinates
     edges = {}
-    for base_idx in np.ndindex(lattice_shape): # for vertex index
-        # for each physical axis
-        for axis in range(lattice_dim):
-            # identify the tensor axes corresponding each direction along this physical axis
-            base_axis, trgt_axis = axis, axis + lattice_dim
+    for base_loc in tensor_locations: # for every tensor location
 
-            # identify the neighboring vertex in the direction of base_axis
-            trgt_idx = list(base_idx)
-            trgt_idx[base_axis] = ( trgt_idx[base_axis] + 1 ) % lattice_shape[base_axis]
-            trgt_idx = tuple(trgt_idx)
+        # for each lattice vector
+        for axis, lattice_vector in enumerate(lattice_vectors):
+
+            # identify the neighboring tensor
+            trgt_loc = _add_vecs(base_loc, lattice_vector)
+
+            # identify the contracted axes of these tensors
+            base_axis, trgt_axis = axis, axis + len(lattice_vectors)
 
             # connect the neighboring nodes (tensors)
-            edge = (base_idx, trgt_idx)
-            edges[edge] = net.connect(nodes[base_idx][base_axis],
-                                      nodes[trgt_idx][trgt_axis],
+            edge = (base_loc, trgt_loc)
+            edges[edge] = net.connect(nodes[base_loc][base_axis],
+                                      nodes[trgt_loc][trgt_axis],
                                       name = str(edge))
 
     return net, nodes, edges
+
+# construct tensor network on a periodic cubic lattice
+def cubic_network(lattice_shape, tensor_bundle):
+    lattice_vectors = [ tuple( 0 if jj != kk else 1
+                               for jj in range(len(lattice_shape)) )
+                        for kk in range(len(lattice_shape)) ]
+    return crystal_network(lattice_shape, tensor_bundle, lattice_vectors)
+
+# construct tensor network on a checkerboard lattice
+def checkerboard_network(lattice_shape, tensor_bundle):
+    assert(len(lattice_shape) == 2) # we can only do 2-D checkerboard lattices
+    assert(all([ num % 2 == 0 for num in lattice_shape ])) # even-sized lattices only
+    lattice_vectors = [ (1,1), (1,-1) ]
+    return crystal_network(lattice_shape, tensor_bundle, lattice_vectors)
 
 # construct a "bubbler" for a cubic network by swallowing one node at a time
 # the swallowing procedure minimizes, at each step:

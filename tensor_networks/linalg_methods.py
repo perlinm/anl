@@ -7,6 +7,16 @@ import tensorflow as tf
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 tf.compat.v1.enable_v2_behavior()
 
+from functools import reduce
+
+# outer product of two tensors
+def tf_outer_product(tensor_a, tensor_b):
+        return tf.tensordot(tensor_a, tensor_b, axes = 0)
+
+# return the power-fold tensor power of a tensor
+def tensor_power(tensor, power):
+    return reduce(tf_outer_product, [tensor]*power)
+
 # convert an isometry T : A --> B into a unitary operator U : A_B --> A_B
 # where the dimensions |A_B| = |B| and A_B = A \otimes ancillas
 def to_unitary(isometry):

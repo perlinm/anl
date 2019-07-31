@@ -9,7 +9,7 @@ tf.compat.v1.enable_v2_behavior()
 import tensornetwork as tn
 from tensornetwork.contractors import greedy_contractor
 
-from linalg_methods import to_unitary
+from linalg_methods import tf_outer_product, to_unitary
 
 # return an indexed pure state in a space with a given tensor product structure (shape)
 def idx_state(index, shape, dtype = tf.float64):
@@ -23,7 +23,7 @@ def zero_state(shape = (), dtype = tf.float64):
 # attach (remove) subsystems to (from) a state
 def attach_subsystems(state, shape):
     if len(shape) == 0: return state
-    return tf.tensordot(zero_state(shape, dtype = state.dtype), state, axes = 0)
+    return tf_outer_product(zero_state(shape, dtype = state.dtype), state)
 def remove_subsystems(state, del_num):
     if del_num <= 0: return state
     shape = state.get_shape()[:del_num]
@@ -112,8 +112,8 @@ def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.
         log_net_norm += np.log(norm_D)
 
         # construct the unitary action of D
-        mat_U_D = tf.tensordot(tf_Z, tf.linalg.diag(normed_vals_D), axes = 0) \
-                + tf.tensordot(tf_X, tf.linalg.diag(tf.sqrt(1-normed_vals_D**2)), axes = 0)
+        mat_U_D = tf_outer_product(tf_Z, tf.linalg.diag(normed_vals_D)) \
+                + tf_outer_product(tf_X, tf.linalg.diag(tf.sqrt(1-normed_vals_D**2)))
 
         # rotate into the right-diagonal basis of the swallowing operator
         state = tf.reshape(state, (inp_dim,) + aux_dims)

@@ -8,6 +8,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 tf.compat.v1.enable_v2_behavior()
 import tensornetwork as tn
 
+from linalg_methods import tensor_power
 from network_methods import cubic_network
 
 ##########################################################################################
@@ -17,39 +18,27 @@ from network_methods import cubic_network
 # with s_j \in 2\pi/q \times \Z; note that the ising model is a 2-state potts model
 ##########################################################################################
 
-# construct a "bare" copy tensor to place at each vertex
-def bare_vertex_tensor(spokes, neighbors, field_over_temp):
-    tensor_shape = (spokes,)*neighbors
-    tensor_values = [ np.exp(field_over_temp * np.cos(2*np.pi*idx[0]/spokes))
-                      if len(set(idx)) == 1 else 0
-                      for idx in np.ndindex(tensor_shape) ]
-    return tf.reshape(tensor_values, tensor_shape)
+# singular values of the link matrix
+def diag_val(spokes, idx, inv_temp):
+    return sum( np.exp(inv_temp * np.cos(angle) + 1j * idx * angle )
+                for angle in np.array(range(spokes))*2*np.pi/spokes )
 
-# compute a link tensor element
-def link_tensor_val(spokes, inv_temp, idx):
-    angles = 2*np.pi * np.array(idx) / spokes
-    return np.exp(inv_temp * np.cos(angles[0] - angles[1]))
+# thermal edge state vectors
+def temp_vec(spokes, idx, inv_temp):
+    vec = np.array([ np.real( np.sqrt(diag_val(spokes, ww, inv_temp)) *
+                              np.exp(1j*ww*idx*2*np.pi/spokes) )
+                     for ww in range(spokes) ])
+    return tf.constant(vec) / np.sqrt(spokes)
 
-# construct the entire link tensor
-def link_tensor(spokes, inv_temp):
-    link_shape = (spokes,)*2
-    tensor_vals = [ link_tensor_val(spokes, inv_temp, idx)
-                    for idx in np.ndindex(link_shape) ]
-    return tf.reshape(tf.constant(tensor_vals), link_shape)
-
-# construct the "fused" vertex tensor by contracting the square root of the edge tensor
-#   at each leg of the "bare" vertex tensor
-def fused_vertex_tensor(neighbors, spokes, inv_temp, field):
-    vals_D, mat_V_L, mat_V_R = tf.linalg.svd(link_tensor(spokes, inv_temp))
-    sqrt_T_L = tf.matmul(mat_V_L * tf.sqrt(vals_D), mat_V_R, adjoint_b = True)
-    T_V = bare_vertex_tensor(spokes, neighbors, field * inv_temp)
-    for axis in range(len(T_V.shape)):
-        T_V = tf.tensordot(sqrt_T_L, T_V, axes = [ [1], [axis] ])
-    return T_V
+# vertex tensor in the cubic tensor network of the clock model
+def vertex_tensor(neighbors, spokes, inv_temp, field):
+    return sum( np.exp(inv_temp*field * np.cos(idx*2*np.pi/spokes))
+                * tensor_power(temp_vec(spokes, idx, inv_temp), neighbors)
+                for idx in range(spokes) )
 
 # construct tensor network on a periodic primitive hypercubic lattice
 def clock_network(lattice_shape, spokes, inv_temp, field = 0):
-    tensor = fused_vertex_tensor(2*len(lattice_shape), spokes, inv_temp, field)
+    tensor = vertex_tensor(2*len(lattice_shape), spokes, inv_temp, field)
     tensor_norm = tf.norm(tensor)
     normed_tensor = tensor / tensor_norm
     log_net_scale = np.prod(lattice_shape) * np.log(tensor_norm)
