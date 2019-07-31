@@ -8,6 +8,8 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 tf.compat.v1.enable_v2_behavior()
 import tensornetwork as tn
 
+from itertools import product as set_product
+
 # construct a tensor network with a translationally-invariant (crystal) structure
 def crystal_network(lattice_shape, tensor_bundle, lattice_vectors):
 
@@ -60,11 +62,11 @@ def cubic_network(lattice_shape, tensor_bundle):
                         for kk in range(len(lattice_shape)) ]
     return crystal_network(lattice_shape, tensor_bundle, lattice_vectors)
 
-# construct tensor network on a checkerboard lattice
+# construct tensor network on a periodic checkerboard lattice
 def checkerboard_network(lattice_shape, tensor_bundle):
-    assert(len(lattice_shape) == 2) # we can only do 2-D checkerboard lattices
     assert(all([ num % 2 == 0 for num in lattice_shape ])) # even-sized lattices only
-    lattice_vectors = [ (1,1), (1,-1) ]
+    signed_ones = set_product([+1,-1], repeat = len(lattice_shape)-1)
+    lattice_vectors = [ (1,) + vec for vec in signed_ones ]
     return crystal_network(lattice_shape, tensor_bundle, lattice_vectors)
 
 # construct a "bubbler" for a cubic network by swallowing one node at a time
