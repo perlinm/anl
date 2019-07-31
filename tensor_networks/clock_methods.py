@@ -48,7 +48,7 @@ def checkerboard_tensor(dimension, spokes, inv_temp, field):
 
     def _tensor_factor(idx, angle_vals):
         angles = np.array(angle_vals) * 2*np.pi/spokes
-        site_term =  field / dimension * np.cos(angles[idx])
+        site_term =  field / 2 * np.cos(angles[idx])
         edge_term = sum( np.cos(_angle_diff(angles,idx,direction))
                          for direction in range(dimension) ) / 2
         scalar = np.exp(inv_temp * ( site_term + edge_term ))
