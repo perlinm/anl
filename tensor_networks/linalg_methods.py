@@ -63,7 +63,7 @@ def hosvd(tensor, singular_value_ratio_cutoff = 1e-10):
         vals_D, mat_U, _ = tf.linalg.svd(mat_factor)
 
         vals_ratios = vals_D[1:] / vals_D[:-1]
-        vals_to_keep = 1 + np.sum(vals_ratios > singular_value_ratio_cutoff)
+        vals_to_keep = 1 + np.sum(abs(vals_ratios) > singular_value_ratio_cutoff)
 
         mat_V = mat_U[:,:vals_to_keep]
         mat_V_dag = tf.transpose(mat_V, conjugate = True)
