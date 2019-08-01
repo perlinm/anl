@@ -27,6 +27,7 @@ steps = 101
 small_value = 1e-6
 max_inv_temp_val = 3
 quantum_backend = False
+use_vertex = True
 
 spokes = 2
 sizes = range(3,11)
@@ -75,8 +76,11 @@ for size in sizes:
     for jj in range(steps):
         if print_steps: print(f" {size} : {jj} / {steps}")
         net, nodes, _, log_net_scale \
-            = clock_network(lattice_shape, spokes, inv_temps[jj])
-        bubbler = cubic_bubbler(lattice_shape)
+            = clock_network(lattice_shape, spokes, inv_temps[jj], use_vertex = use_vertex)
+        if use_vertex:
+            bubbler = cubic_bubbler(lattice_shape)
+        else:
+            bubbler = checkerboard_bubbler(lattice_shape)
 
         if quantum_backend:
             log_probs[jj], log_norms[jj] = quantum_contraction(nodes, bubbler)
@@ -89,7 +93,8 @@ for size in sizes:
         if inv_temps[jj] == 0: continue
         small_field = small_value / inv_temps[jj]
         net, nodes, _, log_net_scale \
-            = clock_network(lattice_shape, spokes, inv_temps[jj], small_field)
+            = clock_network(lattice_shape, spokes, inv_temps[jj], small_field,
+                            use_vertex = use_vertex)
 
         if quantum_backend:
             log_prob, log_norm = quantum_contraction(nodes, bubbler)
