@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import numpy as np
+import scipy
 
 import os
 import tensorflow as tf
@@ -21,28 +22,44 @@ from functools import reduce
 ##########################################################################################
 
 def _integers(spokes):
-    return ( val-spokes/2 for val in range(spokes) )
+    return ( val for val in range(spokes) )
 
 def _angles(spokes):
     return ( val * 2*np.pi/spokes for val in _integers(spokes) )
 
 # singular values of the link matrix
-def diag_val(spokes, idx, inv_temp):
+def _diag_val(spokes, idx, inv_temp):
     return sum( np.exp( inv_temp * np.cos(angle) ) * np.cos( idx * angle )
                 for angle in _angles(spokes) ) / spokes
 
 # thermal edge state vectors
-def temp_vec(spokes, idx, inv_temp):
-    return tf.constant([ np.sqrt(abs(diag_val(spokes, ww, inv_temp))) *
+def _therm_vec(spokes, idx, inv_temp):
+    return tf.constant([ np.sqrt(abs(_diag_val(spokes, ww, inv_temp))) *
                          np.exp(1j*ww*idx*2*np.pi/spokes)
                          for ww in _integers(spokes) ])
+def _therm_mat(dimension, spokes, idx, inv_temp):
+    vec = tensor_power(_therm_vec(spokes, idx, inv_temp), dimension)
+    return tf_outer_product(vec, tf.math.conj(vec))
 
 # vertex tensor in the cubic tensor network of the clock model
-def vertex_tensor(neighbors, spokes, inv_temp, field):
+def vertex_tensor(dimension, spokes, inv_temp, field):
     tensor = sum( np.exp(inv_temp*field * np.cos(idx*2*np.pi/spokes)) *
-                  tensor_power(temp_vec(spokes, idx, inv_temp), neighbors)
+                  _therm_mat(dimension, spokes, idx, inv_temp)
                   for idx in _integers(spokes) )
     return tf.math.real(tensor) / spokes
+
+# vertex tensor in the cubic tensor network of the XY model
+def vertex_tensor_XY(dimension, bond_dimension, inv_temp, field):
+    def _prod_diag_val(indices, xx):
+        return np.prod([ scipy.special.iv(idx, xx) for idx in indices ])
+    def _mod_diag_val(indices, xx):
+        idx_sum = sum(indices[:dimension]) - sum(indices[dimension:])
+        return scipy.special.iv(idx_sum, xx)
+    index_vals = set_product(range(bond_dimension), repeat = 2*dimension)
+    vector = tf.constant([ np.sqrt(_prod_diag_val(indices, inv_temp)) *
+                           _mod_diag_val(indices, inv_temp*field)
+                           for indices in index_vals ])
+    return tf.reshape(vector, [bond_dimension]*2*dimension)
 
 # checkerboard tensor in the checkerboard tensor network of the clock model
 def checkerboard_tensor(dimension, spokes, inv_temp, field):
@@ -71,7 +88,7 @@ def checkerboard_tensor(dimension, spokes, inv_temp, field):
 # construct tensor network on a periodic primitive hypercubic lattice
 def clock_network(lattice_shape, spokes, inv_temp, field = 0, use_vertex = True):
     if use_vertex:
-        tensor = vertex_tensor(2*len(lattice_shape), spokes, inv_temp, field)
+        tensor = vertex_tensor(len(lattice_shape), spokes, inv_temp, field)
         tensor_num = np.prod(lattice_shape)
     else:
         assert(all( num % 2 == 0 for num in lattice_shape ))
