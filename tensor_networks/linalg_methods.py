@@ -17,6 +17,14 @@ def tf_outer_product(tensor_a, tensor_b):
 def tensor_power(tensor, power):
     return reduce(tf_outer_product, [tensor]*power)
 
+# return the discrete fourier transform on a space with given dimension
+def fourier_transform(dimension):
+    mat = np.zeros((dimension,dimension), dtype = complex)
+    for ww in range(dimension):
+        for tt in range(dimension):
+            mat[ww,tt] = np.exp(-1j*ww*tt*2*np.pi/dimension)
+    return tf.constant(mat/np.sqrt(dimension))
+
 # convert an isometry T : A --> B into a unitary operator U : A_B --> A_B
 # where the dimensions |A_B| = |B| and A_B = A \otimes ancillas
 def to_unitary(isometry):
