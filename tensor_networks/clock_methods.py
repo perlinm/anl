@@ -86,8 +86,10 @@ def checkerboard_tensor(dimension, spokes, inv_temp, field):
                 for angle_vals in set_product(_integers(spokes), repeat = 2**dimension) )
 
 # construct tensor network on a periodic primitive hypercubic lattice
-def clock_network(lattice_shape, spokes, inv_temp, field = 0, use_vertex = True):
+def clock_network(lattice_shape, spokes, inv_temp, field = 0,
+                  use_vertex = True, use_XY = False):
     if use_vertex:
+        if use_XY: vertex_tensor = vertex_tensor_XY
         tensor = vertex_tensor(len(lattice_shape), spokes, inv_temp, field)
         tensor_num = np.prod(lattice_shape)
     else:
