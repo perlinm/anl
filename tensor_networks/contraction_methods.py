@@ -182,13 +182,15 @@ def classical_contraction(net, nodes, bubbler = None):
         # get the tensor associated with this node, reordering axes as necessary
         swallow_tensor = tf.transpose(node.get_tensor(), out_op_idx + inp_op_idx)
         swallow_matrix = tf.reshape(swallow_tensor, (out_dim, inp_dim))
-        vals_D = tf.linalg.svd(swallow_matrix)[0].numpy()
+
+        singular_vals = tf.linalg.svd(swallow_matrix)[0].numpy()
         ### the tensorflow's svd algorithm sometimes gives a segfault...
-        ### if a segfault occur, use numpy's svd algorithm instead
-        # from numpy.linalg import svd
-        # _, vals_D, _ = svd(swallow_matrix.numpy())
-        norm_D = max(vals_D)
-        log_net_norm += np.log(vals_D.max())
+        ### if a segfault occurs, use numpy's svd algorithm instead
+        if np.isnan(singular_vals).any() or np.isinf(singular_vals).any():
+            from numpy.linalg import svd as np_svd
+            _, singular_vals, _ = np_svd(swallow_matrix.numpy())
+        node_norm = singular_vals.max()
+        log_net_norm += np.log(node_norm)
 
         # add to our list of "eaten" nodes, update the list of dangling edges
         eaten_nodes.add(node)
