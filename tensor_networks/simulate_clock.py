@@ -30,6 +30,10 @@ print_steps = True
 
 ### collect derived info
 
+lattice_shape = (lattice_size,)*dimensions
+inv_temps = np.linspace(0, max_inv_temp, inv_temp_steps+1)
+fields = np.linspace(0, diff_field_steps*small_value, diff_field_steps+1)
+
 root_dir = os.path.dirname(sys.argv[0])
 data_dir = "data"
 base_dir = os.path.join(root_dir, data_dir)
@@ -38,8 +42,8 @@ text_XY = "_XY" if use_XY else ""
 base_file_name = f"{{}}_bond{spokes}_N{lattice_size}_D{dimensions}{text_XY}.txt"
 base_path = os.path.join(base_dir, base_file_name)
 
-inv_temps = np.linspace(0, max_inv_temp, inv_temp_steps+1)
-fields = np.linspace(0, diff_field_steps*small_value, diff_field_steps+1)
+header = f"max_inv_temp: {inv_temps[-1]}\n"
+header += f"max_field: {fields[-1]}"
 
 if use_vertex:
     _bubbler = cubic_bubbler
@@ -73,5 +77,5 @@ for bb, inv_temp in enumerate(inv_temps):
 
 if not os.path.isdir(base_dir):
     os.mkdir(base_dir)
-np.savetxt(base_path.format("log_probs"), log_probs)
-np.savetxt(base_path.format("log_norms"), log_norms)
+np.savetxt(base_path.format("log_probs"), log_probs, header = header)
+np.savetxt(base_path.format("log_norms"), log_norms, header = header)
