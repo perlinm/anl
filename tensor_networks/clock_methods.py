@@ -83,8 +83,9 @@ def checkerboard_tensor(dimension, spokes, inv_temp, field):
                            for idx in range(len(angle_vals)) ]
         return reduce(tf_outer_product, tensor_factors)
 
-    return sum( _tensor_term(angle_vals)
-                for angle_vals in set_product(_integers(spokes), repeat = 2**dimension) )
+    tensor = sum( _tensor_term(angle_vals)
+                  for angle_vals in set_product(_integers(spokes), repeat = 2**dimension) )
+    return tensor / spokes**2
 
 # construct tensor network on a periodic primitive hypercubic lattice
 def clock_network(lattice_shape, spokes, inv_temp, field = 0,
