@@ -183,11 +183,10 @@ def classical_contraction(net, nodes, bubbler = None):
         swallow_tensor = tf.transpose(node.get_tensor(), out_op_idx + inp_op_idx)
         swallow_matrix = tf.reshape(swallow_tensor, (out_dim, inp_dim))
 
-        singular_vals = tf.linalg.svd(swallow_matrix)[0].numpy()
-        ### the tensorflow's svd algorithm sometimes gives a segfault...
-        ### if a segfault occurs, use numpy's svd algorithm instead
-        if np.isnan(singular_vals).any() or np.isinf(singular_vals).any():
-            singular_vals = np.linalg.svd(swallow_matrix.numpy())[1]
+        ### the tensorflow's svd algorithm is much faster than numpy's, but tensorlow
+        ###   appears to have numerical issues and sometimes gives a segfault... :(
+        # singular_vals = tf.linalg.svd(swallow_matrix)[0].numpy()
+        singular_vals = np.linalg.svd(swallow_matrix.numpy())[1]
         matrix_norm = singular_vals.max()
         log_net_norm += np.log(matrix_norm)
 
