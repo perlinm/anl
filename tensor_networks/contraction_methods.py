@@ -187,10 +187,9 @@ def classical_contraction(net, nodes, bubbler = None):
         ### the tensorflow's svd algorithm sometimes gives a segfault...
         ### if a segfault occurs, use numpy's svd algorithm instead
         if np.isnan(singular_vals).any() or np.isinf(singular_vals).any():
-            from numpy.linalg import svd as np_svd
-            _, singular_vals, _ = np_svd(swallow_matrix.numpy())
-        node_norm = singular_vals.max()
-        log_net_norm += np.log(node_norm)
+            singular_vals = np.linalg.svd(swallow_matrix.numpy())[1]
+        matrix_norm = singular_vals.max()
+        log_net_norm += np.log(matrix_norm)
 
         # add to our list of "eaten" nodes, update the list of dangling edges
         eaten_nodes.add(node)

@@ -42,7 +42,7 @@ def _therm_mat(dimension, spokes, idx, inv_temp):
     return tf_outer_product(vec, tf.math.conj(vec))
 
 # vertex tensor in the cubic tensor network of the clock model
-def vertex_tensor(dimension, spokes, inv_temp, field):
+def vertex_tensor_clock(dimension, spokes, inv_temp, field):
     tensor = sum( np.exp(inv_temp*field * np.cos(idx*2*np.pi/spokes)) *
                   _therm_mat(dimension, spokes, idx, inv_temp)
                   for idx in _integers(spokes) )
@@ -91,7 +91,10 @@ def checkerboard_tensor(dimension, spokes, inv_temp, field):
 def clock_network(lattice_shape, spokes, inv_temp, field = 0,
                   use_vertex = True, use_XY = False):
     if use_vertex:
-        if use_XY: vertex_tensor = vertex_tensor_XY
+        if use_XY:
+            vertex_tensor = vertex_tensor_XY
+        else:
+            vertex_tensor = vertex_tensor_clock
         tensor = vertex_tensor(len(lattice_shape), spokes, inv_temp, field)
         tensor_num = np.prod(lattice_shape)
     else:
