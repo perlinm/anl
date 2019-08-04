@@ -7,6 +7,10 @@ from contraction_methods import quantum_contraction, classical_contraction
 from network_methods import cubic_bubbler, checkerboard_bubbler
 from clock_methods import clock_network
 
+from clock_formats import dat_dir, name_builder
+
+root_dir = os.path.dirname(sys.argv[0])
+
 ##########################################################################################
 # compute various quantities for the clock model
 ##########################################################################################
@@ -16,34 +20,31 @@ from clock_methods import clock_network
 spokes = 3
 lattice_size = 5
 dimensions = 2
+use_XY = False
 
-inv_temp_steps = 100
-diff_field_steps = 5
-
-max_inv_temp = 5
+max_inv_temp = 3
 small_value = 1e-6
+
+inv_temp_steps = 10
+diff_field_steps = 2
 
 quantum_backend = False
 use_vertex = True
-use_XY = False
 print_steps = True
 
-### collect derived info
+##########################################################################################
+# collect derived info
+##########################################################################################
 
+max_field_val = diff_field_steps * small_value
 lattice_shape = (lattice_size,)*dimensions
 inv_temps = np.linspace(0, max_inv_temp, inv_temp_steps+1)
-fields = np.linspace(0, diff_field_steps*small_value, diff_field_steps+1)
+field_vals = np.linspace(0, max_field_val, diff_field_steps+1)
 
-root_dir = os.path.dirname(sys.argv[0])
-data_dir = "data"
-base_dir = os.path.join(root_dir, data_dir)
-
-text_XY = "_XY" if use_XY else ""
-base_file_name = f"{{}}_bond{spokes}_N{lattice_size}_D{dimensions}{text_XY}.txt"
-base_path = os.path.join(base_dir, base_file_name)
-
-header = f"max_inv_temp: {inv_temps[-1]}\n"
-header += f"max_field: {fields[-1]}"
+header = f"max_inv_temp: {max_inv_temp}\n"
+header += f"max_field_val: {max_field_val}"
+base_dir = os.path.join(root_dir, dat_dir)
+dat_file_name = name_builder(base_dir, spokes, lattice_size, dimensions, use_XY)
 
 if use_vertex:
     _bubbler = cubic_bubbler
@@ -61,13 +62,14 @@ else:
 # simulate!
 ##########################################################################################
 
-data_shape = ( len(inv_temps), len(fields) )
+data_shape = ( len(inv_temps), len(field_vals) )
 log_probs = np.zeros(data_shape)
 log_norms = np.zeros(data_shape)
 
 for bb, inv_temp in enumerate(inv_temps):
-    for hh, field in enumerate(fields):
-        if print_steps: print(f"{bb}/{len(inv_temps)} {hh}/{len(fields)}")
+    for hh, field_val in enumerate(field_vals):
+        if print_steps: print(f"{bb}/{len(inv_temps)} {hh}/{len(field_vals)}")
+        field = field_val / inv_temp if inv_temp != 0 else 0
         net, nodes, _, log_net_scale \
             = clock_network(lattice_shape, spokes, inv_temp, field,
                             use_vertex = use_vertex, use_XY = use_XY)
@@ -77,5 +79,5 @@ for bb, inv_temp in enumerate(inv_temps):
 
 if not os.path.isdir(base_dir):
     os.mkdir(base_dir)
-np.savetxt(base_path.format("log_probs"), log_probs, header = header)
-np.savetxt(base_path.format("log_norms"), log_norms, header = header)
+np.savetxt(dat_file_name("log_probs"), log_probs, header = header)
+np.savetxt(dat_file_name("log_norms"), log_norms, header = header)
