@@ -21,6 +21,7 @@ spokes = int(sys.argv[1])
 lattice_size = int(sys.argv[2])
 
 use_XY = False
+use_vertex = True
 dimensions = 2
 
 max_inv_temp = 5
@@ -30,7 +31,6 @@ inv_temp_steps = 500
 diff_field_steps = 5
 
 quantum_backend = False
-use_vertex = True
 print_steps = True
 
 # we don't have a checkerboard tensor for the XY model,
@@ -50,7 +50,8 @@ header = f"max_inv_temp: {max_inv_temp}\n"
 header += f"max_field_val: {max_field_val}"
 
 base_dir = os.path.join(root_dir, dat_dir)
-dat_file_name = dat_name_builder(base_dir, spokes, lattice_size, dimensions, use_XY)
+dat_file_name = dat_name_builder(base_dir, spokes, lattice_size,
+                                 dimensions, use_vertex, use_XY)
 
 if use_vertex:
     _bubbler = cubic_bubbler

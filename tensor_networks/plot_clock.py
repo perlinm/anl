@@ -22,6 +22,7 @@ lattice_size_vals = range(3,11)
 max_plot_inv_temp = 1.5
 
 use_XY = False
+use_vertex = True
 dimensions = 2
 
 crit_refline = True
@@ -99,7 +100,8 @@ for spokes, lattice_size in set_product(spoke_vals, lattice_size_vals):
     label = _label(spokes, lattice_size)
 
     dat_base_dir = os.path.join(root_dir, dat_dir)
-    dat_file_name = dat_name_builder(dat_base_dir, spokes, lattice_size, dimensions, use_XY)
+    dat_file_name = dat_name_builder(dat_base_dir, spokes, lattice_size,
+                                     dimensions, use_vertex, use_XY)
 
     try:
         log_probs = np.loadtxt(dat_file_name("log_probs"))
@@ -177,7 +179,7 @@ for fig_name in plt.get_figlabels():
 
 if save_figures:
     fig_base_dir = os.path.join(root_dir, fig_dir)
-    fig_file_name = fig_name_builder(fig_base_dir, dimensions, use_XY)
+    fig_file_name = fig_name_builder(fig_base_dir, dimensions, use_vertex, use_XY)
     if not os.path.isdir(fig_base_dir): os.mkdir(fig_base_dir)
     for fig_name in plt.get_figlabels():
         plt.figure(fig_name)
