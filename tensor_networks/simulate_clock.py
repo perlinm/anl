@@ -7,7 +7,7 @@ from contraction_methods import quantum_contraction, classical_contraction
 from network_methods import cubic_bubbler, checkerboard_bubbler
 from clock_methods import clock_network
 
-from clock_formats import dat_dir, name_builder
+from clock_formats import dat_dir, dat_name_builder
 
 root_dir = os.path.dirname(sys.argv[0])
 
@@ -17,16 +17,17 @@ root_dir = os.path.dirname(sys.argv[0])
 
 ### set simulation options
 
-spokes = 3
-lattice_size = 5
-dimensions = 2
-use_XY = False
+spokes = int(sys.argv[1])
+lattice_size = int(sys.argv[2])
 
-max_inv_temp = 3
+use_XY = False
+dimensions = 2
+
+max_inv_temp = 5
 small_value = 1e-6
 
-inv_temp_steps = 10
-diff_field_steps = 2
+inv_temp_steps = 500
+diff_field_steps = 5
 
 quantum_backend = False
 use_vertex = True
@@ -43,8 +44,9 @@ field_vals = np.linspace(0, max_field_val, diff_field_steps+1)
 
 header = f"max_inv_temp: {max_inv_temp}\n"
 header += f"max_field_val: {max_field_val}"
+
 base_dir = os.path.join(root_dir, dat_dir)
-dat_file_name = name_builder(base_dir, spokes, lattice_size, dimensions, use_XY)
+dat_file_name = dat_name_builder(base_dir, spokes, lattice_size, dimensions, use_XY)
 
 if use_vertex:
     _bubbler = cubic_bubbler

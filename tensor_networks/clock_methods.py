@@ -21,11 +21,14 @@ from functools import reduce
 # with s_j \in 2\pi/q \times \Z; note that the ising model is a 2-state potts model
 ##########################################################################################
 
-def _integers(spokes):
-    return ( val-(spokes-1)/2 for val in range(spokes) )
+def _integers(spokes, center_on_zero = False):
+    if not center_on_zero:
+        return range(spokes)
+    else:
+        return ( val-(spokes-1)/2 for val in range(spokes) )
 
-def _angles(spokes):
-    return ( val * 2*np.pi/spokes for val in _integers(spokes) )
+def _angles(spokes, center_on_zero = False):
+    return ( val * 2*np.pi/spokes for val in _integers(spokes, center_on_zero) )
 
 # singular values of the link matrix
 def _diag_val(spokes, idx, inv_temp):
@@ -56,7 +59,7 @@ def vertex_tensor_XY(dimension, bond_dimension, inv_temp, field):
     def _mod_diag_val(indices, xx):
         idx_sum = sum(indices[:dimension]) - sum(indices[dimension:])
         return scipy.special.iv(idx_sum, xx)
-    index_vals = set_product(_integers(bond_dimension), repeat = 2*dimension)
+    index_vals = set_product(_integers(bond_dimension,True), repeat = 2*dimension)
     vector = tf.constant([ np.sqrt(_prod_diag_val(indices, inv_temp)) *
                            _mod_diag_val(indices, inv_temp*field)
                            for indices in index_vals ])

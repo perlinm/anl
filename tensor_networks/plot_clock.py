@@ -5,7 +5,7 @@ import numpy as np
 import scipy.optimize
 import matplotlib.pyplot as plt
 
-from clock_formats import dat_dir, fig_dir, name_builder
+from clock_formats import dat_dir, fig_dir, dat_name_builder, fig_name_builder
 
 from itertools import product as set_product
 
@@ -17,13 +17,12 @@ show_figures = "show" in sys.argv[1:]
 # plot various quantities for the clock model
 ##########################################################################################
 
-spoke_vals = [ 3 ]
+spoke_vals = [ 2 ]
 lattice_size_vals = [ 5 ]
 
-dimensions = 2
 use_XY = False
+dimensions = 2
 
-max_temp = 3
 crit_refline = True
 normalize_to_crit = True
 if use_XY and crit_refline:
@@ -99,13 +98,17 @@ for spokes, lattice_size in set_product(spoke_vals, lattice_size_vals):
     label = _label(spokes, lattice_size)
 
     dat_base_dir = os.path.join(root_dir, dat_dir)
-    fig_base_dir = os.path.join(root_dir, dat_dir)
-    dat_file_name = name_builder(dat_base_dir, spokes, lattice_size, dimensions, use_XY)
-    fig_file_name = name_builder(fig_base_dir, spokes, lattice_size, dimensions, use_XY)
+    dat_file_name = dat_name_builder(dat_base_dir, spokes, lattice_size, dimensions, use_XY)
 
-    log_probs = np.loadtxt(dat_file_name("log_probs"))
-    log_norms = np.loadtxt(dat_file_name("log_norms"))
-    log_Z = log_norms + 1/2 * log_probs
+    try:
+        log_probs = np.loadtxt(dat_file_name("log_probs"))
+        log_norms = np.loadtxt(dat_file_name("log_norms"))
+    except OSError:
+        print("data files not found:")
+        print(dat_file_name("log_probs"))
+        print(dat_file_name("log_norms"))
+        exit()
+    log_Z = 1/2 * log_probs + log_norms
 
     with open(dat_file_name("log_probs"), "r") as dat_file:
         for line in dat_file:
@@ -168,7 +171,9 @@ for fig_name in plt.get_figlabels():
     plt.tight_layout()
 
 if save_figures:
-    if not os.path.isdir(fig_dir): os.mkdir(fig_dir)
+    fig_base_dir = os.path.join(root_dir, fig_dir)
+    fig_file_name = fig_name_builder(fig_base_dir, dimensions, use_XY)
+    if not os.path.isdir(fig_base_dir): os.mkdir(fig_base_dir)
     for fig_name in plt.get_figlabels():
         plt.figure(fig_name)
         plt.savefig(fig_file_name(fig_name))
