@@ -33,6 +33,10 @@ quantum_backend = False
 use_vertex = True
 print_steps = True
 
+# we don't have a checkerboard tensor for the XY model,
+# so we can't both use XY tensors and *not* use vertex tensors
+assert( not ( use_XY and not use_vertex ) )
+
 ##########################################################################################
 # collect derived info
 ##########################################################################################
