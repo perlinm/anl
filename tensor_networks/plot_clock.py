@@ -18,7 +18,8 @@ show_figures = "show" in sys.argv[1:]
 ##########################################################################################
 
 spoke_vals = [ 2 ]
-lattice_size_vals = [ 5 ]
+lattice_size_vals = range(3,11)
+max_plot_inv_temp = 1.5
 
 use_XY = False
 dimensions = 2
@@ -164,6 +165,10 @@ for fig_name in plt.get_figlabels():
     plt.xlabel(r"$\beta$")
     if title_text:
         plt.title(title_text)
+    if max_plot_inv_temp:
+        plt.xlim(0,max_plot_inv_temp)
+    else:
+        plt.xlim(0,plt.gca().get_xlim()[1])
     if crit_refline:
         plt.axvline(crit_inv_temp, color = "gray", linestyle = "--", linewidth = 1)
     if make_legend:
