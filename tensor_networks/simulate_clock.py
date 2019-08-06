@@ -75,7 +75,9 @@ log_norms = np.zeros(data_shape)
 
 for bb, inv_temp in enumerate(inv_temps):
     for hh, field_val in enumerate(field_vals):
-        if print_steps: print(f"{bb}/{len(inv_temps)} {hh}/{len(field_vals)}")
+        if print_steps:
+            print(f"{bb}/{len(inv_temps)} {hh}/{len(field_vals)}")
+            sys.stdout.flush()
         field = field_val / inv_temp if inv_temp != 0 else 0
         net, nodes, _, log_net_scale \
             = clock_network(lattice_shape, spokes, inv_temp, field,
