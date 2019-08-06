@@ -30,6 +30,8 @@ small_value = 1e-6
 inv_temp_steps = 500
 diff_field_steps = 5
 
+test_run = True
+
 quantum_backend = False
 print_steps = True
 
@@ -51,7 +53,7 @@ header += f"max_field_val: {max_field_val}"
 
 base_dir = os.path.join(root_dir, dat_dir)
 dat_file_name = dat_name_builder(base_dir, spokes, lattice_size,
-                                 dimensions, use_vertex, use_XY)
+                                 dimensions, use_vertex, use_XY, test_run)
 
 if use_vertex:
     _bubbler = cubic_bubbler
