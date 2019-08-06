@@ -174,7 +174,7 @@ for fig_name in plt.get_figlabels():
     if crit_refline:
         plt.axvline(crit_inv_temp, color = "gray", linestyle = "--", linewidth = 1)
     if make_legend:
-        plt.legend(framealpha = 1)
+        plt.legend(framealpha = 0.8)
     plt.tight_layout()
 
 if save_figures:
