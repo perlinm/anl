@@ -57,8 +57,8 @@ def get_edge_info(node, eaten_nodes):
 # (ii) the logarithm of the product of the operator norms of the swallowing operators
 def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.float64):
     if bubbler is None: bubbler = nodes.keys()
-    tf_Z = tf.constant([[1,0],[0,-1]], dtype = dtype) # Pauli-Z
-    tf_X = tf.constant([[0,1],[1,0]], dtype = dtype) # Pauli-X
+    tf_Z = tf.constant([[+1,0],[0,-1]], dtype = dtype) # Pauli-Z
+    tf_X = tf.constant([[0,+1],[+1,0]], dtype = dtype) # Pauli-X
 
     log_net_norm = 0
     state = zero_state(dtype = dtype)
@@ -97,17 +97,17 @@ def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.
         swallow_matrix = tf.reshape(swallow_tensor, (out_dim, inp_dim))
 
         # perform singular-value decomposition of swallowing_matrix:
-        #   S = V_L @ diag(D) @ V_R^\dag,
+        #   M = V_L @ diag(D) @ V_R^\dag,
         # where V_L, V_R are isometric; and D is positive semi-definite
-        vals_D, mat_V_L, mat_V_R = tf.linalg.svd(swallow_matrix)
+        mat_V_L, vals_D, mat_V_R_dag = np.linalg.svd(swallow_matrix.numpy())
 
         # convert isometries into unitaries on an extension of the domain
         #   achieved by attaching trivial ancillary subsystems (i.e. in |0>)
         mat_V_L = to_unitary(mat_V_L)
-        mat_V_R = to_unitary(mat_V_R)
+        mat_V_R_dag = to_unitary(mat_V_R_dag)
 
         # normalize D by its operator norm, keeping track of the norm independently
-        norm_D = max(vals_D.numpy())
+        norm_D = max(vals_D)
         normed_vals_D = vals_D/norm_D
         log_net_norm += np.log(norm_D)
 
@@ -117,7 +117,7 @@ def quantum_contraction(nodes, bubbler = None, print_status = False, dtype = tf.
 
         # rotate into the right-diagonal basis of the swallowing operator
         state = tf.reshape(state, (inp_dim,) + aux_dims)
-        state = tf.tensordot(tf.transpose(mat_V_R, conjugate = True), state, axes = [[1],[0]])
+        state = tf.tensordot(mat_V_R_dag, state, axes = [[1],[0]])
         state = tf.reshape(state, inp_dims + aux_dims)
 
         # if we lose subsystems upon swallowing this operator, then project them out now
@@ -171,6 +171,8 @@ def classical_contraction(net, nodes, bubbler = None):
     eaten_nodes = set()
     dangling_edges = []
 
+    # compute the product of all operator norms of vectors,
+    #   where the operator norm is equal to the largest singular value
     for node_idx in bubbler:
         node = nodes[node_idx]
         inp_edges, inp_op_idx, out_edges, out_op_idx = get_edge_info(node, eaten_nodes)
@@ -183,11 +185,10 @@ def classical_contraction(net, nodes, bubbler = None):
         swallow_tensor = tf.transpose(node.get_tensor(), out_op_idx + inp_op_idx)
         swallow_matrix = tf.reshape(swallow_tensor, (out_dim, inp_dim))
 
-        ### the tensorflow's svd algorithm is much faster than numpy's, but tensorlow
-        ###   appears to have numerical issues and sometimes gives a segfault... :(
-        # singular_vals = tf.linalg.svd(swallow_matrix)[0].numpy()
-        singular_vals = np.linalg.svd(swallow_matrix.numpy())[1]
-        matrix_norm = singular_vals.max()
+        # compute the 2-norm of this matrix, which for numpy is the largest singular value
+        matrix_norm = np.linalg.norm(swallow_matrix.numpy(),2)
+
+        # update our product of operator norms
         log_net_norm += np.log(matrix_norm)
 
         # add to our list of "eaten" nodes, update the list of dangling edges
