@@ -44,7 +44,7 @@ def _identify_stitches(wire_path_map, circuit_wires):
 # (i) shape of the united distribution
 # (ii) type of the united distribution
 # (iii) type of the data contained in the united distribution
-def _get_uniting_metadata(frag_dists):
+def _get_distribution_metadata(frag_dists):
     united_dist_shape = ()
     for frag_dist in frag_dists:
         for _, dist in frag_dist:
@@ -62,8 +62,8 @@ def _collect_tensor_factors(frag_dists, stitches, op_assignment):
     for stitch_idx, ( exit_frag_wire, init_frag_wire ) in enumerate(stitches.items()):
         exit_frag_idx, exit_wire = exit_frag_wire
         init_frag_idx, init_wire = init_frag_wire
-        frag_exit_conds[exit_frag_idx].add(( op_assignment[stitch_idx], exit_wire ))
-        frag_init_conds[init_frag_idx].add(( op_assignment[stitch_idx], init_wire ))
+        frag_exit_conds[exit_frag_idx].add(( exit_wire, op_assignment[stitch_idx] ))
+        frag_init_conds[init_frag_idx].add(( init_wire, op_assignment[stitch_idx] ))
 
     return [ frag_dist[init_conds, exit_conds]
              for frag_dist, init_conds, exit_conds
@@ -99,7 +99,7 @@ def _united_axis_permutation(wire_path_map, circuit_wires, frag_wires):
 # (ii) identify the operators to assign to each stitch
 # (iii) determine the scalar factor at every stitch
 def _get_uniting_objects(frag_dists, stitches, metadata = None):
-    if not metadata: metadata = _get_uniting_metadata(frag_dists)
+    if not metadata: metadata = _get_distribution_metadata(frag_dists)
     united_dist_shape, dist_obj_type, dist_dat_type = metadata
 
     if _is_complex(dist_dat_type):
@@ -118,21 +118,22 @@ def _get_uniting_objects(frag_dists, stitches, metadata = None):
     if dist_obj_type is tf.SparseTensor:
         indices = np.empty((0,len(united_dist_shape)))
         values = tf.constant([], dtype = dist_dat_type)
-        united_dist = tf.SparseTensor(indices, values, united_dist_shape)
+        empty_united_dist = tf.SparseTensor(indices, values, united_dist_shape)
     else:
-        united_dist = tf.zeros(united_dist_shape, dtype = dist_dat_type)
+        empty_united_dist = tf.zeros(united_dist_shape, dtype = dist_dat_type)
 
-    return united_dist, stitch_ops, scalar_factor
+    return empty_united_dist, stitch_ops, scalar_factor
 
+##########################################################################################
 
-# unite fragment distributions
+# unite fragment distributions to reconstruct an overall probability distribution
 def unite_fragment_distributions(frag_dists, wire_path_map, circuit_wires, frag_wires,
                                  force_probs = True, status_updates = False):
     # identify all cuts ("stitches") with a dictionary mapping exit wires to init wires
     stitches = _identify_stitches(wire_path_map, circuit_wires)
 
     # determine metadata for the united distribution
-    frag_metadata = _get_uniting_metadata(frag_dists)
+    frag_metadata = _get_distribution_metadata(frag_dists)
     _, _, dist_dat_type = frag_metadata
 
     # initialize an empty distribution
@@ -159,6 +160,8 @@ def unite_fragment_distributions(frag_dists, wire_path_map, circuit_wires, frag_
     perm = _united_axis_permutation(wire_path_map, circuit_wires, frag_wires)
     return scalar_factor * tf_transpose(united_dist, perm)
 
+##########################################################################################
+
 # for each state in list of states at the end of a circuit,
 # get the state at the end of the output wires on each fragment
 def get_frag_states(states, wire_path_map, circuit_wires, frag_wires):
@@ -180,8 +183,20 @@ def query_united_distribution(frag_dists, wire_path_map, circuit_wires, frag_wir
     stitches = _identify_stitches(wire_path_map, circuit_wires)
 
     # determine metadata for the united distribution
-    frag_metadata = _get_uniting_metadata(frag_dists)
-    _, _, dist_dat_type = frag_metadata
+    frag_metadata = _get_distribution_metadata(frag_dists)
+    _, dist_obj_type, dist_dat_type = frag_metadata
+
+    # determine how to query distributions
+    if dist_obj_type is tf.SparseTensor:
+        def _query(dist, query_state):
+            value = 0
+            for idx, state in enumerate(dist.indices.numpy()):
+                if all(np.equal(state, query_state)):
+                    value = dist.values.numpy()[idx]
+                    break
+            return value
+    else:
+        def _query(dist, state): return dist.numpy()[state]
 
     # identify the operators and scalar factor at each stitch
     _, stitch_ops, scalar_factor \
@@ -200,8 +215,8 @@ def query_united_distribution(frag_dists, wire_path_map, circuit_wires, frag_wir
         dist_factors = _collect_tensor_factors(frag_dists, stitches, op_assignment)
         for query_idx, frag_states in enumerate(frag_query_states):
             dist_state_iter = zip(dist_factors, frag_states)
-            state_vals[query_idx] += np.prod([ dist.numpy()[state]
-                                               for dist, state in dist_state_iter ])
+            state_vals[query_idx] \
+                += np.prod([ _query(dist,state) for dist, state in dist_state_iter ])
 
     # convert amplitudes to probabilities if appropriate
     if force_probs and _is_complex(dist_dat_type):
@@ -209,9 +224,15 @@ def query_united_distribution(frag_dists, wire_path_map, circuit_wires, frag_wir
 
     return scalar_factor * state_vals
 
+##########################################################################################
+
+def sample_united_distribution(frag_dists, wire_path_map, circuit_wires, frag_wires):
+    frag_metadata = _get_distribution_metadata(frag_dists)
+    united_dist_shape, dist_obj_type, dist_dat_type = frag_metadata
+
 # todo:
 # -- write method to pick samples from reconsturcted (full / positive) distributions
-# -- write method to convert sample histogram into "modified" sample histogram
+# -- write method to convert "actual" sample histogram into "corrected" sample histogram
 # -- write "identity subtractor" to minimize the weight of negative terms (?)
 
 # -- MIT QASM <--> Intel QS circuit simulation backend

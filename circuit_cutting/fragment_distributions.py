@@ -134,7 +134,7 @@ class FragmentProbabilities(FragmentDistribution):
         except: None
 
         # otherwise, use available data to return the requested conditional distribution
-        for is_input, oper, wire in conditions:
+        for is_input, wire, oper in conditions:
 
             # get the basis in which we have stored data on the conditional distribution
             if is_input:
@@ -148,9 +148,9 @@ class FragmentProbabilities(FragmentDistribution):
             if oper in basis_ops[dist_basis]: continue
 
             # build a method to replace this condition with a new one
-            vacancy = conditions.difference({(is_input,oper,wire)})
+            vacancy = conditions.difference({(is_input,wire,oper)})
             def _dist(oper_str):
-                return self[vacancy.union({(is_input,oper_str,wire)})]
+                return self[vacancy.union({(is_input,wire,oper_str)})]
 
             # explicitly recognize standard operators by a string
             if type(oper) is str:
@@ -209,17 +209,17 @@ class FragmentProbabilities(FragmentDistribution):
 
         # identify wires with init/exit conditions
         for conditions, _ in self: break
-        init_wires = [ wire for is_init, _, wire in conditions if is_init ]
-        exit_wires = [ wire for is_init, _, wire in conditions if not is_init ]
+        init_wires = [ wire for is_init, wire, _ in conditions if is_init ]
+        exit_wires = [ wire for is_init, wire, _ in conditions if not is_init ]
 
         # loop over all assignments of init/exit conditions in the appropriate bases
         for init_ops in set_product(basis_ops[init_basis], repeat = len(init_wires)):
-            new_init_conds = [ ( True, init_op, init_wire )
-                               for init_op, init_wire in zip(init_ops, init_wires) ]
+            new_init_conds = [ ( True, init_wire, init_op )
+                               for init_wire, init_op in zip(init_wires, init_ops) ]
 
             for exit_ops in set_product(basis_ops[exit_basis], repeat = len(exit_wires)):
-                new_exit_conds = [ ( False, exit_op, exit_wire )
-                                   for exit_op, exit_wire in zip(exit_ops, exit_wires) ]
+                new_exit_conds = [ ( False, exit_wire, exit_op )
+                                   for exit_wire, exit_op in zip(exit_wires, exit_ops) ]
 
                 new_probs.add(new_init_conds, new_exit_conds,
                               self[new_init_conds, new_exit_conds])
@@ -301,8 +301,8 @@ class FragmentAmplitudes(FragmentDistribution):
 
         # identify all init/exit_wires
         for conditions in self.all_conditions():
-            init_wires = { wire for is_input, _, wire in conditions if is_input }
-            exit_wires = { wire for is_input, _, wire in conditions if not is_input }
+            init_wires = { wire for is_input, wire, _ in conditions if is_input }
+            exit_wires = { wire for is_input, wire, _ in conditions if not is_input }
             break
 
         # initialize a conditional probability distribution
@@ -311,15 +311,15 @@ class FragmentAmplitudes(FragmentDistribution):
         # loop over all init/exit conditions (init_states/exit_states)
         for init_states in set_product(init_basis_ops, repeat = len(init_wires)):
             # conditions (for probs) corresponding to this choice of init_states
-            prob_init_conds = { ( True, state, wire )
-                                for state, wire in zip(init_states, init_wires) }
+            prob_init_conds = { ( True, wire, state )
+                                for wire, state in zip(init_wires, init_states) }
 
             # computational basis terms that contribute to this choice of init_states
             init_terms = [ _init_dist_terms(state, False) for state in init_states ]
 
             for exit_states in set_product(exit_basis_ops, repeat = len(exit_wires)):
-                prob_exit_conds = { ( False, state, wire )
-                                    for state, wire in zip(exit_states, exit_wires) }
+                prob_exit_conds = { ( False, wire, state )
+                                    for wire, state in zip(exit_wires, exit_states) }
 
                 exit_terms = [ _exit_dist_terms(state, True) for state in exit_states ]
 
@@ -334,16 +334,16 @@ class FragmentAmplitudes(FragmentDistribution):
                     init_fac = np.prod(init_facs)
 
                     # conditions (i.e. on the amplitude distribution) for to this term
-                    amp_init_conds = { ( True, bit, wire )
-                                       for bit, wire in zip(init_bits, init_wires)}
+                    amp_init_conds = { ( True, wire, bit )
+                                       for wire, bit in zip(init_wires, init_bits)}
 
                     for exit_bits_facs in set_product(*exit_terms):
                         try: exit_bits, exit_facs = zip(*exit_bits_facs)
                         except: exit_bits, exit_facs = [], []
 
                         exit_fac = np.prod(exit_facs)
-                        amp_exit_conds = { ( False, bit, wire )
-                                           for bit, wire in zip(exit_bits, exit_wires)}
+                        amp_exit_conds = { ( False, wire, bit )
+                                           for wire, bit in zip(exit_wires, exit_bits)}
 
                         # add to the amplitudes for this choice of init/exit_states
                         fac = init_fac * exit_fac

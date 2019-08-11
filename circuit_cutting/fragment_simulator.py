@@ -163,11 +163,11 @@ def _get_single_fragment_amplitudes(fragment, init_wires = None, exit_wires = No
 
     # for every choice of states prepared on all on init wires
     for init_states in set_product(range(2), repeat = len(init_wires)):
-        init_conds = frozenset(zip(init_states, init_wires))
+        init_conds = frozenset(zip(init_wires, init_states))
 
         # build circuit with the "input" states prepared appropriately
         prep_circuits = [ _act_gate(fragment, _prep_gate(_state_ZXY(bit_state)), wire)
-                          for bit_state, wire in init_conds ]
+                          for wire, bit_state in init_conds ]
         init_circuit = reduce(lambda x, y : x + y, prep_circuits + [ fragment ])
 
         # get the quantum state vector for the circuit
@@ -175,11 +175,11 @@ def _get_single_fragment_amplitudes(fragment, init_wires = None, exit_wires = No
 
         # for every set of projections on all on exit wires
         for exit_states in set_product(range(2), repeat = len(exit_wires)):
-            exit_conds = zip(exit_states, exit_wires)
+            exit_conds = zip(exit_wires, exit_states)
 
             # project onto the given measured states on exit wires
             projected_amplitudes = deepcopy(all_amplitudes)
-            for exit_state, exit_wire in zip(exit_states, exit_wires):
+            for exit_wire, exit_state in zip(exit_wires, exit_states):
                 exit_vec = tf.constant(_state_vec(exit_state))
                 axes = [ [ 0 ], [ exit_axes[exit_wire] ] ]
                 projected_amplitudes \
@@ -260,9 +260,9 @@ def _get_single_fragment_probabilities(fragment, init_wires = None, exit_wires =
             init_shots = int(init_shots + 0.5)
 
         # build circuit with the "input" states prepared appropriately
-        init_conds = frozenset(zip(init_states, init_wires))
+        init_conds = frozenset(zip(init_wires, init_states))
         prep_circuits = [ _act_gate(fragment, _prep_gate(state), wire)
-                          for state, wire in init_conds ]
+                          for wire, state in init_conds ]
         init_circuit = reduce(lambda x, y : x + y, prep_circuits + [ fragment ])
 
         # for every choice of measurement bases on all on exit wires
@@ -285,7 +285,7 @@ def _get_single_fragment_probabilities(fragment, init_wires = None, exit_wires =
                                 for bit, basis in zip(exit_bits, exit_bases) ]
 
                 projected_dist = deepcopy(full_dist)
-                for bit_state, wire in zip(exit_bits, exit_wires):
+                for wire, bit_state in zip(exit_wires, exit_bits):
                     qubits = len(projected_dist.shape)
                     begin = [ 0 ] * qubits
                     size = [ 2 ] * qubits
@@ -300,7 +300,7 @@ def _get_single_fragment_probabilities(fragment, init_wires = None, exit_wires =
                     # divide distribution by 3 for each identity operator (I)
                     #   to average over measurements in 3 different bases
                     iden_fac = 3**sum( state == "I" for state in exit_states )
-                    exit_conds = zip(exit_states, exit_wires)
+                    exit_conds = zip(exit_wires, exit_states)
                     init_dist.add(init_conds, exit_conds, projected_dist / iden_fac)
 
         ### end construction of init_dist
@@ -317,7 +317,7 @@ def _get_single_fragment_probabilities(fragment, init_wires = None, exit_wires =
             init_terms = [ _dist_terms_IZXY(state) for state in init_states ]
             for init_ops in set_product(*init_terms):
                 iden_fac = 3**sum( op == "I" for op in init_ops )
-                init_conds = zip(init_ops, init_wires)
+                init_conds = zip(init_wires, init_ops)
                 frag_dist.add(init_conds, exit_conds, dist / iden_fac)
 
     # if we computed distributions in the same init/exit bases as we were asked for,
