@@ -87,6 +87,16 @@ class FragmentDistribution:
     def all_distributions(self):
         return ( dist for _, dist in self )
 
+    # identify wires with init/exit conditions
+    def all_wires(self):
+        for conditions, _ in self: break
+        return { cond[:2] for cond in conditions }
+    def init_wires(self):
+        return { wire for is_init, wire in self.all_wires() if is_init }
+    def exit_wires(self):
+        return { wire for is_init, wire in self.all_wires() if not is_init }
+
+    # combine separate init/exit conditions into one set of conditions
     def _combine_conds(self, init_conds, exit_conds):
         init_conds = ( cond if len(cond) == 3 else (True,) + cond
                        for cond in init_conds )
@@ -208,9 +218,8 @@ class FragmentProbabilities(FragmentDistribution):
         new_probs = FragmentProbabilities()
 
         # identify wires with init/exit conditions
-        for conditions, _ in self: break
-        init_wires = [ wire for is_init, wire, _ in conditions if is_init ]
-        exit_wires = [ wire for is_init, wire, _ in conditions if not is_init ]
+        init_wires = self.init_wires()
+        exit_wires = self.exit_wires()
 
         # loop over all assignments of init/exit conditions in the appropriate bases
         for init_ops in set_product(basis_ops[init_basis], repeat = len(init_wires)):
@@ -299,11 +308,9 @@ class FragmentAmplitudes(FragmentDistribution):
         _init_dist_terms = _dist_terms[init_basis]
         _exit_dist_terms = _dist_terms[exit_basis]
 
-        # identify all init/exit_wires
-        for conditions in self.all_conditions():
-            init_wires = { wire for is_input, wire, _ in conditions if is_input }
-            exit_wires = { wire for is_input, wire, _ in conditions if not is_input }
-            break
+        # identify wires with init/exit conditions
+        init_wires = self.init_wires()
+        exit_wires = self.exit_wires()
 
         # initialize a conditional probability distribution
         probs = FragmentProbabilities(init_basis, exit_basis)

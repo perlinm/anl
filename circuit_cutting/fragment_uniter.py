@@ -37,7 +37,7 @@ def _identify_stitches(wire_path_map, circuit_wires):
         exit_wires = wire_path_map[wire][:-1]
         # add the stitches in this path
         stitches.update({ exit_wire : init_wire
-                          for init_wire, exit_wire in zip(init_wires,exit_wires) })
+                          for init_wire, exit_wire in zip(init_wires, exit_wires) })
     return stitches
 
 # get metadata for a united distribution:
