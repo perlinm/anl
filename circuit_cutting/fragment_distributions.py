@@ -81,11 +81,11 @@ class FragmentDistribution:
 
     # iterate over all sets of conditions
     def all_conditions(self):
-        return self._data_dict.keys()
+        return ( cond for cond, _ in self )
 
     # iterate over all distributions
     def all_distributions(self):
-        return self._data_dict.values()
+        return ( dist for _, dist in self )
 
     def _combine_conds(self, init_conds, exit_conds):
         init_conds = ( cond if len(cond) == 3 else (True,) + cond
@@ -250,6 +250,8 @@ class FragmentAmplitudes(FragmentDistribution):
             theta, phi = get_bloch_angles(state)
             return ( self[_amp_dist(0)] * np.cos(theta/2) +
                      self[_amp_dist(1)] * np.sin(theta/2) * np.exp(1j*phi) )
+
+    # todo: write method to change bases for conditions
 
     # convert into a FragmentProbabilities object
     def to_probabilities(self, init_basis = pauli, exit_basis = pauli, dtype = tf.float64):
