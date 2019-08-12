@@ -78,7 +78,9 @@ def distribution_fidelity(dist_0, dist_1):
     if type(dist_1) is tf.SparseTensor and type(dist_0) is not tf.SparseTensor:
         return distribution_fidelity(dist_1, dist_0)
 
-    return abs( tf.reduce_sum(tf.sqrt(tf.math.multiply(dist_0, dist_1))).numpy() )**2
+    dist_prod = tf.math.multiply(dist_0, dist_1)
+    sqrt_prod = tf.sqrt(tf.cast(dist_prod, tf.complex128))
+    return tf.reduce_sum(sqrt_prod).numpy()
 
 # relative entropy S( P | Q ) \equiv tr( P log(P/Q) ) in bits
 # interpretation: information gained upon using Q (the "actual distribution")
