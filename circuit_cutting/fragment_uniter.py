@@ -20,7 +20,7 @@ from tensorflow_extension import tf_outer_product, tf_transpose
 from itertools import product as set_product
 from functools import reduce
 
-from fragment_distributions import pauli_vecs
+from fragment_distributions import basis_ops_pauli, pauli, basis_ops_SIC, SIC
 from fragment_simulator import identify_init_exit_wires
 
 # determine whether a data type is complex
@@ -105,13 +105,13 @@ def _get_uniting_objects(frag_dists, stitches, metadata = None):
     if _is_complex(dist_dat_type):
 
         # the conditional distributions are amplitudes
-        stitch_ops = range(2)
+        stitch_ops = [0,1]
         scalar_factor = 1
 
     if not _is_complex(dist_dat_type):
 
         # the conditional distributions are probabilities
-        stitch_ops = list(pauli_vecs.keys())
+        stitch_ops = basis_ops_pauli
         scalar_factor = 1/2**len(stitches)
 
     # initialize an empty probability distribution
@@ -140,6 +140,13 @@ def unite_fragment_distributions(frag_dists, wire_path_map, circuit_wires, frag_
     #   and identify the operators / scalar factor at each stitch
     united_dist, stitch_ops, scalar_factor \
         = _get_uniting_objects(frag_dists, stitches, frag_metadata)
+
+    # pre-process distributions to switch conditions into the pauli basis
+    if stitch_ops == basis_ops_pauli:
+        frag_dists = [ frag_dist
+                       if frag_dist.init_basis == pauli and frag_dist.exit_basis == pauli
+                       else frag_dist.shuffle_bases(pauli, pauli)
+                       for frag_dist in frag_dists ]
 
     # loop over all assigments of stitch operators at all cut locations (stitches)
     for op_assignment in set_product(stitch_ops, repeat = len(stitches)):
@@ -186,7 +193,7 @@ def query_united_distribution(frag_dists, wire_path_map, circuit_wires, frag_wir
     frag_metadata = _get_distribution_metadata(frag_dists)
     _, dist_obj_type, dist_dat_type = frag_metadata
 
-    # determine how to query distributions
+    # figure out how to query distributions
     if dist_obj_type is tf.SparseTensor:
         def _query(dist, query_state):
             value = 0
@@ -226,13 +233,84 @@ def query_united_distribution(frag_dists, wire_path_map, circuit_wires, frag_wir
 
 ##########################################################################################
 
-def sample_united_distribution(frag_dists, wire_path_map, circuit_wires, frag_wires):
+# sample from the "positive terms" of a united distribution,
+# returning a histogram of samples and an overall normalization for the "positive terms"
+# optionally sample the negative terms with the `sample_negative` flag
+def sample_positive_distribution(frag_dists, wire_path_map, circuit_wires, frag_wires,
+                                 num_samples, sample_negative = False):
+    # identify all cuts ("stitches") with a dictionary mapping exit wires to init wires
+    stitches = _identify_stitches(wire_path_map, circuit_wires)
+
+    # determine metadata for the united distribution
     frag_metadata = _get_distribution_metadata(frag_dists)
-    united_dist_shape, dist_obj_type, dist_dat_type = frag_metadata
+    _, dist_obj_type, dist_dat_type = frag_metadata
+
+    # figure out how to get various info from distributions
+    if dist_obj_type is tf.SparseTensor:
+        def _norm(dist): # normalization of a quasi-probability distribution
+            return sum(dist.values)
+        def _indices(dist): # number of indices in the distribution
+            return len(dist.indices)
+        def _probs(dist): # normalized 1-D array of probabilities
+            return dist.values.numpy() / sum(dist.values)
+        def _state(dist,idx): # the state at a particular index for the 1-D array
+            return tuple(dist.indices.numpy()[idx])
+    else:
+        def _norm(dist):
+            return dist.numpy().sum()
+        def _indices(dist):
+            return np.prod(dist.shape)
+        def _probs(dist):
+            return dist.numpy().flatten() / dist.numpy().sum()
+        def _state(dist,idx):
+            return tuple( int(bb) for bb in format(idx, f"0{len(dist.shape)}b") )
+
+    # pick one sample from a distribution
+    def _sample_dist(dist):
+        idx = np.random.choice(_indices(dist), p = _probs(dist))
+        return _state(dist, idx)
+
+    # get SIC-basis distributions
+    if _is_complex(dist_dat_type):
+        frag_dists_SIC = [ frag_dist.to_probabilities(SIC,SIC)
+                           for frag_dist in frag_dists ]
+    else:
+        frag_dists_SIC = [ frag_dist.shuffle_bases(SIC,SIC)
+                           for frag_dist in frag_dists ]
+
+    # determine assignments of SIC-I operators that yield positive terms
+    positive_op_assignments \
+        = [ ops for ops in set_product(basis_ops_SIC + ["I"], repeat = len(stitches))
+            if sum([ op == "I" for op in ops ]) % 2 == sample_negative ]
+
+    # compute norms for all assigments of SIC-basis operators at all cut locations
+    norms = {}
+    for op_assignment in positive_op_assignments:
+        dist_factors = _collect_tensor_factors(frag_dists_SIC, stitches, op_assignment)
+        term_norm = np.prod([ _norm(dist) for dist in dist_factors ])
+        scalar_factor = np.prod([ 1 if op == "I" else 3/2 for op in op_assignment ])
+        norms[op_assignment] = scalar_factor * term_norm
+    total_norm = sum(norms.values())
+
+    # determine the term to sample from for each sample
+    term_probs = np.array(list(norms.values())) / total_norm
+    sample_term_indices = np.random.choice(len(term_probs), num_samples, p = term_probs)
+    sample_assignments = [ positive_op_assignments[idx] for idx in sample_term_indices ]
+
+    # collect a histogram of samples
+    samples = {}
+    permutation = _united_axis_permutation(wire_path_map, circuit_wires, frag_wires)
+    for op_assignment in sample_assignments:
+        dist_factors = _collect_tensor_factors(frag_dists_SIC, stitches, op_assignment)
+        frag_sample = tuple( val for dist in dist_factors for val in _sample_dist(dist) )
+        circuit_sample = tuple( frag_sample[pp] for pp in permutation )
+        try:
+            samples[circuit_sample] += 1
+        except:
+            samples[circuit_sample] = 1
+
+    return samples, total_norm
 
 # todo:
-# -- write method to pick samples from reconsturcted (full / positive) distributions
-# -- write method to convert "actual" sample histogram into "corrected" sample histogram
 # -- write "identity subtractor" to minimize the weight of negative terms (?)
-
 # -- MIT QASM <--> Intel QS circuit simulation backend

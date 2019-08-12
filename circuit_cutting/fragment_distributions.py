@@ -125,8 +125,8 @@ class FragmentProbabilities(FragmentDistribution):
 
     # initialize, specifying a basis for input-wire conditions
     def __init__(self, init_basis = SIC, exit_basis = IZXY):
-        assert( init_basis in [ SIC, IZXY, ZZXY ] )
-        assert( exit_basis in [ SIC, IZXY, ZZXY ] )
+        assert( init_basis in [ SIC, IZXY, ZZXY, pauli ] )
+        assert( exit_basis in [ SIC, IZXY, ZZXY, pauli ] )
         super().__init__()
         self.init_basis = init_basis
         self.exit_basis = exit_basis
@@ -215,17 +215,22 @@ class FragmentProbabilities(FragmentDistribution):
 
     # change the bases in which we store conditional probabilities
     def shuffle_bases(self, init_basis = pauli, exit_basis = pauli):
-        new_probs = FragmentProbabilities()
+        new_probs = FragmentProbabilities(init_basis, exit_basis)
 
         # identify wires with init/exit conditions
         init_wires = self.init_wires()
         exit_wires = self.exit_wires()
 
+        if type(init_basis) is str:
+            init_basis = basis_ops[init_basis]
+        if type(exit_basis) is str:
+            exit_basis = basis_ops[exit_basis]
+
         # loop over all assignments of init/exit conditions in the appropriate bases
-        for init_ops in set_product(basis_ops[init_basis], repeat = len(init_wires)):
+        for init_ops in set_product(init_basis, repeat = len(init_wires)):
             new_init_conds = list(zip(init_wires, init_ops))
 
-            for exit_ops in set_product(basis_ops[exit_basis], repeat = len(exit_wires)):
+            for exit_ops in set_product(exit_basis, repeat = len(exit_wires)):
                 new_exit_conds = list(zip(exit_wires, exit_ops))
 
                 new_probs.add(new_init_conds, new_exit_conds,
@@ -300,10 +305,7 @@ class FragmentAmplitudes(FragmentDistribution):
         return new_amps
 
     # convert into a FragmentProbabilities object
-    def to_probabilities(self, init_basis = pauli, exit_basis = pauli, dtype = tf.float64):
-        assert( init_basis in basis_ops.keys() )
-        assert( exit_basis in basis_ops.keys() )
-
+    def to_probabilities(self, init_basis = ZZXY, exit_basis = ZZXY, dtype = tf.float64):
         # save the bases in which we want to store init/exit conditions
         final_init_basis = init_basis
         final_exit_basis = exit_basis
