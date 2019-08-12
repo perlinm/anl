@@ -223,12 +223,10 @@ class FragmentProbabilities(FragmentDistribution):
 
         # loop over all assignments of init/exit conditions in the appropriate bases
         for init_ops in set_product(basis_ops[init_basis], repeat = len(init_wires)):
-            new_init_conds = [ ( True, init_wire, init_op )
-                               for init_wire, init_op in zip(init_wires, init_ops) ]
+            new_init_conds = list(zip(init_wires, init_ops))
 
             for exit_ops in set_product(basis_ops[exit_basis], repeat = len(exit_wires)):
-                new_exit_conds = [ ( False, exit_wire, exit_op )
-                                   for exit_wire, exit_op in zip(exit_wires, exit_ops) ]
+                new_exit_conds = list(zip(exit_wires, exit_ops))
 
                 new_probs.add(new_init_conds, new_exit_conds,
                               self[new_init_conds, new_exit_conds])
@@ -262,7 +260,44 @@ class FragmentAmplitudes(FragmentDistribution):
             return ( self[_amp_dist(0)] * np.cos(theta/2) +
                      self[_amp_dist(1)] * np.sin(theta/2) * np.exp(1j*phi) )
 
-    # todo: write method to change bases for conditions
+    # change the bases in which we store conditional amplitudes
+    # init/exit_basis are dictionaries mapping init/exit wires to states that will be |0>
+    def shuffle_bases(self, init_basis = None, exit_basis = None):
+        new_amps = FragmentAmplitudes()
+
+        # identify wires with init/exit conditions
+        init_wires = self.init_wires()
+        exit_wires = self.exit_wires()
+
+        # set default bases
+        if init_basis == None: init_basis = { wire : 0 for wire in init_wires }
+        if exit_basis == None: exit_basis = { wire : 0 for wire in exit_wires }
+
+        # return a given qubit state in a basis in which zero_state is |0>
+        def _relative_state(wire, state, zero_state):
+            if state == 0:
+                return zero_state
+            else:
+                if zero_state in (0,1):
+                    return 1-zero_state
+                else:
+                    return tuple( -xx for xx in zero_state )
+
+        # loop over all assignments of init/exit conditions in the appropriate bases
+        for init_states in set_product([0,1], repeat = len(init_wires)):
+            new_init_conds = list(zip(init_wires, init_states))
+            old_init_conds = { wire : _relative_state(wire, state, init_basis[wire])
+                               for wire, state in new_init_conds }
+
+            for exit_states in set_product([0,1], repeat = len(exit_wires)):
+                new_exit_conds = list(zip(exit_wires, exit_states))
+                old_exit_conds = { wire : _relative_state(wire, state, exit_basis[wire])
+                                   for wire, state in new_exit_conds }
+
+                new_amps.add(new_init_conds, new_exit_conds,
+                             self[old_init_conds, old_exit_conds])
+
+        return new_amps
 
     # convert into a FragmentProbabilities object
     def to_probabilities(self, init_basis = pauli, exit_basis = pauli, dtype = tf.float64):
