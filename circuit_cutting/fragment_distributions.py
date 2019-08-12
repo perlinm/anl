@@ -251,10 +251,12 @@ class FragmentAmplitudes(FragmentDistribution):
         except: None
 
         # otherwise, use available data to return the requested conditional distribution
-        for is_input, state, wire in conditions:
-            vacancy = conditions.difference({(is_input,state,wire)})
+        for is_input, wire, state in conditions:
+            if state in (0,1): continue
+
+            vacancy = conditions.difference({(is_input,wire,state)})
             def _amp_dist(state):
-                return self[vacancy.union({(is_input,state,wire)})]
+                return self[vacancy.union({(is_input,wire,state)})]
 
             theta, phi = get_bloch_angles(state)
             return ( self[_amp_dist(0)] * np.cos(theta/2) +
