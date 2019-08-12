@@ -302,7 +302,8 @@ def sample_positive_distribution(frag_dists, wire_path_map, circuit_wires, frag_
     permutation = _united_axis_permutation(wire_path_map, circuit_wires, frag_wires)
     for op_assignment in sample_assignments:
         dist_factors = _collect_tensor_factors(frag_dists_SIC, stitches, op_assignment)
-        frag_sample = tuple( val for dist in dist_factors for val in _sample_dist(dist) )
+        frag_sample = tuple( val for dist in dist_factors[::-1]
+                             for val in _sample_dist(dist) )
         circuit_sample = tuple( frag_sample[pp] for pp in permutation )
         try:
             samples[circuit_sample] += 1
