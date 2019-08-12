@@ -89,3 +89,7 @@ def relative_entropy(approx_dist, actual_dist):
     if tf.SparseTensor in [ type(approx_dist), type(actual_dist) ]: return None
     dist_to_sum = approx_dist * tf.math.log(approx_dist/actual_dist)
     return tf.reduce_sum( dist_to_sum ).numpy() / np.log(2)
+
+def uniform_dist(dist):
+    num_vals = np.prod(dist.shape)
+    return tf.constant([1/num_vals] * num_vals, shape = dist.shape, dtype = dist.dtype)

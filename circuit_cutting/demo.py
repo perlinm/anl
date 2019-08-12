@@ -87,10 +87,7 @@ if print_distributions:
 print("fidelity:", distribution_fidelity(united_distribution, circuit_distribution))
 print("relative entropy:", relative_entropy(united_distribution, circuit_distribution))
 
-# num_vals = np.prod(circuit_distribution.shape)
-# uniform_dist = tf.constant([1/num_vals] * num_vals,
-#                            shape = circuit_distribution.shape,
-#                            dtype = circuit_distribution.dtype)
+# uniform = uniform_dist(circuit_distribution)
 # print()
 # print(distribution_fidelity(uniform_dist, circuit_distribution))
 # print(relative_entropy(uniform_dist, circuit_distribution))
