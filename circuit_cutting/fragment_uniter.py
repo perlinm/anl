@@ -233,17 +233,24 @@ def query_united_distribution(frag_dists, wire_path_map, circuit_wires, frag_wir
 
 ##########################################################################################
 
-# sample from the "positive terms" of a united distribution,
-# returning a histogram of samples and an overall normalization for the "positive terms"
-# optionally sample the negative terms with the `sample_negative` flag
+# sample from the "positive terms" of a united distribution
+# return a histogram of samples and an overall normalization for the "positive terms"
+# -- optionally return the full positive/negative distributions if num_samples is 0
+# -- optionally sample the negative terms with the `sample_negative` flag
 def sample_positive_distribution(frag_dists, wire_path_map, circuit_wires, frag_wires,
                                  num_samples, sample_negative = False):
     # identify all cuts ("stitches") with a dictionary mapping exit wires to init wires
     stitches = _identify_stitches(wire_path_map, circuit_wires)
 
-    # determine metadata for the united distribution
+    # determine metadata about the distributions
     frag_metadata = _get_distribution_metadata(frag_dists)
     _, dist_obj_type, dist_dat_type = frag_metadata
+
+    # identify permutation that we will have to apply to the sampled states
+    qubit_perm = _united_axis_permutation(wire_path_map, circuit_wires, frag_wires)
+
+    if not num_samples:
+        full_dist, _, _ = _get_uniting_objects(frag_dists, stitches, frag_metadata)
 
     # figure out how to get various info from distributions
     if dist_obj_type is tf.SparseTensor:
@@ -290,7 +297,12 @@ def sample_positive_distribution(frag_dists, wire_path_map, circuit_wires, frag_
         term_norm = np.prod([ _norm(dist) for dist in dist_factors ])
         scalar_factor = np.prod([ 1 if op == "I" else 3/2 for op in op_assignment ])
         norms[op_assignment] = scalar_factor * term_norm
+        if not num_samples:
+            full_dist += scalar_factor * reduce(tf_outer_product, dist_factors[::-1])
     total_norm = sum(norms.values())
+
+    if not num_samples:
+        return tf_transpose(full_dist, qubit_perm) / total_norm, total_norm
 
     # determine the term to sample from for each sample
     term_probs = np.array(list(norms.values())) / total_norm
@@ -299,12 +311,11 @@ def sample_positive_distribution(frag_dists, wire_path_map, circuit_wires, frag_
 
     # collect a histogram of samples
     samples = {}
-    permutation = _united_axis_permutation(wire_path_map, circuit_wires, frag_wires)
     for op_assignment in sample_assignments:
         dist_factors = _collect_tensor_factors(frag_dists_SIC, stitches, op_assignment)
         frag_sample = tuple( val for dist in dist_factors[::-1]
                              for val in _sample_dist(dist) )
-        circuit_sample = tuple( frag_sample[pp] for pp in permutation )
+        circuit_sample = tuple( frag_sample[pp] for pp in qubit_perm )
         try:
             samples[circuit_sample] += 1
         except:
