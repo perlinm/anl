@@ -250,9 +250,6 @@ def sample_positive_distribution(frag_dists, wire_path_map, circuit_wires, frag_
     # identify permutation that we will have to apply to the sampled states
     qubit_perm = _united_axis_permutation(wire_path_map, circuit_wires, frag_wires)
 
-    if not num_samples:
-        full_dist, _, _ = _get_uniting_objects(frag_dists, stitches, frag_metadata)
-
     # figure out how to get various info from distributions
     if dist_obj_type is tf.SparseTensor:
         def _norm(dist): # normalization of a quasi-probability distribution
@@ -286,6 +283,11 @@ def sample_positive_distribution(frag_dists, wire_path_map, circuit_wires, frag_
         frag_dists_SIC = [ frag_dist.shuffle_bases(SIC,SIC)
                            for frag_dist in frag_dists ]
 
+    # if necessary, build an empty united distribution
+    if not num_samples:
+        frag_metadata_SIC = _get_distribution_metadata(frag_dists_SIC)
+        full_dist, _, _ = _get_uniting_objects(frag_dists_SIC, stitches, frag_metadata_SIC)
+
     # determine assignments of SIC-I operators that yield positive terms
     positive_op_assignments \
         = [ ops for ops in set_product(basis_ops_SIC + ["I"], repeat = len(stitches))
@@ -302,6 +304,7 @@ def sample_positive_distribution(frag_dists, wire_path_map, circuit_wires, frag_
             full_dist += scalar_factor * reduce(tf_outer_product, dist_factors[::-1])
     total_norm = sum(norms.values())
 
+    # return the united distribution if appropriate
     if not num_samples:
         return tf_transpose(full_dist, qubit_perm) / total_norm, total_norm
 
