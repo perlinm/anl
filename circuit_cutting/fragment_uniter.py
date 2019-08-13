@@ -211,7 +211,8 @@ def query_united_distribution(frag_dists, wire_path_map, circuit_wires, frag_wir
 
     # initialize the values we are querying,
     # and identify the state on each fragment for each query state
-    state_vals = np.zeros(len(query_states))
+    vals_type = complex if _is_complex(dist_dat_type) else float
+    state_vals = np.zeros(len(query_states), dtype = vals_type)
     frag_query_states = get_frag_states(query_states, wire_path_map,
                                         circuit_wires, frag_wires)
 
