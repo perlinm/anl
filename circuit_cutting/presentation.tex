@@ -1,0 +1,589 @@
+\documentclass[aspectratio=43,usenames,dvipsnames]{beamer}
+
+
+%%% beamer theme
+\usepackage{beamerthemelined}
+\usetheme{default} % theme with outline sidebar on the right
+\setbeamertemplate{headline}{} % clear header
+\setbeamertemplate{navigation symbols}{} % clear navigation symbols
+\setbeamertemplate{footline} % place frame number in footer
+{
+  \hbox{\begin{beamercolorbox}
+      [wd=1\paperwidth,ht=2.25ex,dp=1ex,right]{framenumber}
+      \usebeamercolor[fg]{subtitle}
+      \insertframenumber{} / \inserttotalframenumber
+      \hspace*{2ex}
+    \end{beamercolorbox}}
+}
+
+%%% symbols, notations, etc.
+\usepackage{physics,braket,bm,amssymb} % physics and math
+\usepackage{mathtools} % for the \prescript command
+\usefonttheme[onlymath]{serif} % "regular" math font
+
+\renewcommand{\t}{\text} % text in math mode
+\newcommand{\f}[2]{\dfrac{#1}{#2}} % shorthand for fractions
+\newcommand{\p}[1]{\left(#1\right)} % parenthesis
+\renewcommand{\sp}[1]{\left[#1\right]} % square parenthesis
+\renewcommand{\set}[1]{\left\{#1\right\}} % curly parenthesis
+\newcommand{\bk}{\Braket} % shorthand for braket notation
+\renewcommand{\v}{\bm} % bold vectors
+\newcommand{\uv}[1]{\bm{\hat{#1}}} % unit vectors
+\renewcommand{\c}{\cdot} % inner product
+
+\newcommand{\B}{\mathcal{B}}
+\renewcommand{\P}{\mathcal{P}}
+
+\renewcommand*{\thefootnote}{\alph{footnote}}
+
+\usepackage{graphicx,float} % for including images and placing them
+\graphicspath{{./figures/}} % set path for all figures
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% tensor network drawing tools
+%%% taken in part from arxiv.org/abs/1603.03039
+
+\usepackage{xcolor}
+\definecolor{tensorblue}{rgb}{0.8,0.8,1}
+\definecolor{tensorred}{rgb}{1,0.5,0.5}
+\definecolor{tensorpurp}{rgb}{1,0.5,1}
+\definecolor{tensorgreen}{rgb}{0.2,0.7,0.2}
+
+\usepackage{tikz}
+\newcommand{\diagram}[1]{
+  \begin{tikzpicture}
+    [scale=.5, every node/.style = {sloped,allow upside down},
+    baseline = {([yshift=+0ex]current bounding box.center)},
+    rounded corners=2pt]
+    #1
+  \end{tikzpicture}}
+
+\tikzset{tens/.style={fill=tensorblue}}
+\tikzset{prp/.style={fill=tensorgreen}}
+\tikzset{msr/.style={fill=tensorred}}
+\tikzset{tengrey/.style={fill=black!20}}
+
+\usetikzlibrary{calc}
+\newcommand{\wire}[4][]{
+  \draw[#1] (#3,#2) -- (#4,#2)
+}
+\newcommand{\vwire}[4][]{
+  \draw[#1] (#2,#3) -- (#2,#4)
+}
+\newcommand{\rect}[6][tens]{
+  \draw[#1] (#4,#2) rectangle (#5,#3);
+  \draw ($ 0.5*(#4,#2) + 0.5*(#5,#3) $) node {$#6$}
+}
+\renewcommand{\dot}[2]{
+  \node at (#2,#1) [circle,fill,inner sep=1.5pt]{};
+}
+\renewcommand{\cross}[3][.25]{
+  \draw (#3,#2) circle (#1) node {};
+  \draw ($ (#3,#2) - (#1,0) $) -- ($ (#3,#2) + (#1,0) $) node{};
+  \draw ($ (#3,#2) - (0,#1) $) -- ($ (#3,#2) + (0,#1) $) node{};
+}
+\newcommand{\cnot}[3]{
+  \dot{#2}{#1};
+  \vwire{#1}{#2}{#3};
+  \cross{#3}{#1};
+}
+
+% measurement meter
+\newcommand{\meter}[5][tengrey]{
+  \rect[#1]{#2}{#3}{#4}{#5}{};
+  \path[path picture={
+    \draw[black] ([shift={(.1,.1)}]
+    path picture bounding box.south west) to[bend left=50]
+    ([shift={(-.1,.1)}]
+    path picture bounding box.south east);
+    \draw[black,-latex] ([shift={(0,.1)}]
+    path picture bounding box.south)
+    -- ([shift={(.2,-.1)}]path picture bounding box.north);}]
+  (#4,#2) rectangle (#5,#3);
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\definecolor{green}{rgb}{0,0.6,0}
+\definecolor{grey}{rgb}{0.35,0.35,0.35}
+
+% for drawing arrows
+\usetikzlibrary{arrows,shapes}
+\tikzstyle{every picture}+=[remember picture]
+\newcommand{\tikzmark}[1]{
+  \tikz[remember picture] \node[coordinate] (#1) {#1};
+}
+
+% for uncovering under/over braces
+\newcommand<>{\uncoverubrace}[2]{%
+  \onslide#3 \underbrace{ \onslide<1->%
+  #1%
+  \onslide#3 }_{#2} \onslide<1->%
+}
+\newcommand<>{\uncoverobrace}[2]{%
+  \onslide#3 \overbrace{ \onslide<1->%
+  #1%
+  \onslide#3 }^{#2} \onslide<1->%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\title{Circuit cutting: theory and practice}%
+\author{M. A. Perlin}%
+\date{9 August 2019}
+
+
+\begin{document}
+
+\begingroup
+\begin{frame}[plain]
+  \titlepage
+\end{frame}
+\endgroup
+\addtocounter{framenumber}{-1}
+
+\begin{frame}
+  \frametitle{A simple identity}
+
+  Resolution of the identity
+  \begin{align*}
+    I =
+    \begin{pmatrix}
+      1 & 0 \\ 0 & 1
+    \end{pmatrix}
+    = \sum_{b\in\set{0,1}} \op{b}
+  \end{align*}
+
+  \vspace{1em}
+
+  \uncover<2->{
+    $N$-qubit state $\ket\psi$, individual qubit $j$
+  }
+
+  \vspace{1em} \uncover<3->{
+    \hspace{.1\textwidth}
+    {\color{red} projection}\makebox[0pt]{\tikzmark{MSR}} onto
+    (sub-normalized) state of $\p{N-1}$ qubits
+  }
+
+  \vspace{.5em}
+  \uncover<2->{
+    \begin{align*}
+      \ket\psi = I_j\ket\psi
+      = \sum_b \uncoverubrace<4->
+      {\color<4->{green}{\ket{b}_j}}{\tikzmark{prp}}
+      \uncoverobrace<3->
+      {\color<3->{red}{\prescript{}{j}{\bk{b|\psi}}}}
+      {\tikzmark{msr}}
+      \uncover<5->{
+        = \sum_b
+        {\color{red} \prescript{}{j}{\bk{b|\psi}}}
+        {\color{green} \otimes_j\ket{b}}
+      }
+    \end{align*}
+  }
+
+  \uncover<3->{
+    \tikz[overlay]{
+      \path[thick,<->]
+      ([xshift=-.1em,yshift=.05em]msr) edge [] ([yshift=-.5em]MSR);
+    }
+  }
+
+  \uncover<4->{
+    \vspace{-1em}
+    \hspace{.05\textwidth}
+    state {\color{green} preparation}\tikzmark{PRP}
+
+    \tikz[overlay]{
+      \path[thick,<->]
+      ([xshift=-.1em]prp) edge [bend left] ([yshift=.25em]PRP);
+    }
+  }
+\end{frame}
+
+\begin{frame}
+  \frametitle{A simple identity (with pictures)}
+  \begin{align*}
+    \ket\psi = \sum_{b\in\set{0,1}}
+    {\color{red}{\prescript{}{j}{\bk{b|\psi}}}}
+    {\color{green}{\otimes_j \ket{b}}}
+  \end{align*}
+
+  \begin{align*}
+    \diagram{
+      \wire{-1.5}{-.5}{3.5};
+      \wire{0}{-.5}{3.5};
+      \wire{1.5}{-.5}{3.5};
+      \rect{-2}{2}{0}{3}{\t{circuit}};
+      \rect[prp]{-.5}{.5}{-1.5}{-.5}{0};
+      \rect[prp]{1}{2}{-1.5}{-.5}{0};
+      \rect[prp]{-2}{-1}{-1.5}{-.5}{0};
+    }
+    ~ = ~
+    \diagram{
+      \wire{-1.5}{0}{2};
+      \wire{0}{0}{2};
+      \wire{1.5}{0}{2};
+      \rect{-2}{2}{0}{1.5}{\psi};
+    }
+    \uncover<2->{
+      ~ = ~
+      \sum_{b\in\set{0,1}} ~
+      \diagram{
+        \wire{-1.5}{0}{5};
+        \wire{0}{0}{2};
+        \wire{1.5}{0}{5};
+        \wire{0}{4.5}{5};
+        \rect{-2}{2}{0}{1.5}{\psi};
+        \rect[msr]{-.5}{.5}{2}{3}{b};
+        \rect[prp]{-.5}{.5}{3.5}{4.5}{b};
+      }
+    }
+  \end{align*}
+
+  \vspace{.em}
+
+  \uncover<3->{
+    \begin{center}
+      in practice: state {\color{red} projection} not allowed!
+    \end{center}
+  }
+  \begin{enumerate}
+  \item<4-> measure in some basis, e.g.~$\set{\ket{0},\ket{1}}$
+  \item<5-> post-select on some measurement outcome, e.g.~$\ket{0}$
+  \item<6-> complex amplitudes inaccessible
+  \end{enumerate}
+  \uncover<7->{
+    \begin{align*}
+      \ket\psi ~\to~ \rho = \op\psi
+      &&
+      \prescript{}{j}{\bk{0|\psi}} ~\to~
+      \tr_j\p{\rho\op{0}_j}
+    \end{align*}
+  }
+\end{frame}
+
+\begin{frame}
+  \frametitle{A new identity}
+
+  \vspace{.5em}
+  Multi-qubit state (density operator) $\rho$, Pauli operators $M$:
+  \begin{align*}
+    \rho = \f12 \sum_{M\in\set{X,Y,Z,I}}
+    \uncoverubrace<2->{\tr_j\p{\rho M_j}}{\tikzmark{msr}}
+    \uncoverubrace<2->{\otimes_j M}{\tikzmark{prp}}
+  \end{align*}
+
+  \uncover<2->{
+    \vspace{.5em}
+    measurement and post-selection? \tikzmark{MSR}
+
+    \vspace{1em}
+    \hspace{0.3\linewidth} state preparation? \tikzmark{PRP}
+
+    \tikz[overlay]{
+      \path[thick,<->]
+      (msr) edge [bend left] ([yshift=.25em]MSR);
+      \path[thick,<->]
+      (prp) edge [bend left] ([yshift=.5em]PRP);
+    }
+  }
+
+  \uncover<3->{
+    Expand $M$ in diagonal basis, e.g.~$Z=\op{0}-\op{1}$
+  }
+  \uncover<4->{
+    \begin{align*}
+      M = \sum_{s\in\set{\pm1}} c_{Ms} \op{M,s}
+    \end{align*}
+  }
+  \uncover<5->{
+    \vspace{-1em}
+    \begin{align*}
+      \rho = \f12
+      \sum_{M,r,s} {\color{grey}{c_{Mr} c_{Ms}}} ~
+      {\color{red} \tr_j\p{\rho \tikzmark{state1} \op{M,r}_j}}
+      {\color{green} \otimes_j \tikzmark{state2} \op{M,s}}
+      && ~
+    \end{align*}
+
+    \vspace{-1.5em}
+    \hspace{0.8\linewidth} \tikzmark{STATE} states!
+
+    \tikz[overlay]{
+      \path[thick,->]
+      ([yshift=-.5em,xshift=1.7em]state1) edge [bend right] (STATE);
+      \path[thick,->]
+      ([yshift=-.5em,xshift=1.7em]state2) edge [bend right]
+      ([yshift=.4em]STATE);
+    }
+  }
+\end{frame}
+
+\begin{frame}
+  \frametitle{The general prescription}
+
+  \vspace{1em}
+  Multi-qubit state $\rho$, single-qubit states $\sigma,\tau$,
+  coefficients $c_{\sigma\tau}$:
+  \begin{align*}
+    \rho = \sum_{\sigma,\tau} c_{\sigma\tau}
+    \uncoverubrace<2->{\tr_j\p{\rho \sigma_j}}{\tikzmark{msr}}
+    \uncoverubrace<2->{\otimes_j \tau}{\tikzmark{prp}}
+  \end{align*}
+
+  \uncover<2->{
+    measure qubit $j$, find state $\sigma$ \tikzmark{MSR}
+
+    \vspace{0.5em}
+    prepare state $\tau$ on qubit $j$ \tikzmark{PRP}
+
+    \tikz[overlay]{
+      \path[thick,<->]
+      (msr) edge [bend left] ([yshift=.25em]MSR);
+      \path[thick,<->]
+      (prp) edge [bend left] ([yshift=.5em]PRP);
+    }
+  }
+
+  \vspace{-.5em}
+  \uncover<3->{
+    \begin{align*}
+      \diagram{
+        \wire{0}{0}{2};
+        \wire{1.5}{0}{2};
+        \wire{-1.5}{0}{2};
+        \uncover<4->{
+          \wire{0}{0}{6};
+          \wire{1.5}{0}{6};
+          \wire{-1.5}{0}{6};
+        }
+        \rect{-2}{2}{0}{1.5}{\rho};
+        \uncover<3>{
+          \meter{-.5}{.5}{2}{3};
+          \meter{1}{2}{2}{3};
+          \meter{-2}{-1}{2}{3};
+        }
+        \uncover<4->{
+          \rect{-2}{2}{2.5}{5.5}{\t{circuit}};
+          \meter{-.5}{.5}{6}{7};
+          \meter{1}{2}{6}{7};
+          \meter{-2}{-1}{6}{7};
+        }
+      }
+      ~ = ~
+      \sum_{\sigma,\tau} c_{\sigma\tau} ~
+      \diagram{
+        \wire{0}{0}{2};
+        \wire{0}{5}{5.5};
+        \wire{-1.5}{0}{5.5};
+        \wire{1.5}{0}{5.5};
+        \uncover<4->{
+          \wire{-1.5}{0}{9};
+          \wire{1.5}{0}{9};
+          \wire{0}{5}{9};
+        }
+        \rect{-2}{2}{0}{1.5}{\rho};
+        \rect[msr]{-.5}{.5}{2}{3.25}{\sigma};
+        \rect[prp]{-.5}{.5}{3.75}{5}{\tau};
+        \uncover<3>{
+          \meter{-.5}{.5}{5.5}{6.5};
+          \meter{1}{2}{5.5}{6.5};
+          \meter{-2}{-1}{5.5}{6.5};
+        }
+        \uncover<4->{
+          \rect{-2}{2}{5.5}{8.5}{\t{circuit}};
+          \meter{-.5}{.5}{9}{10};
+          \meter{1}{2}{9}{10};
+          \meter{-2}{-1}{9}{10};
+        }
+      }
+    \end{align*}
+  }
+
+  \uncover<5->{
+    {\it Anywhere} in a circuit:
+    \begin{align*}
+      \diagram{
+        \wire{0}{0}{3};
+      }
+      ~ = ~
+      \sum_{\sigma,\tau} c_{\sigma\tau} ~
+      \diagram{
+        \wire{.5}{-.5}{0};
+        \wire{.5}{2.5}{3};
+        \rect[msr]{0}{1}{0}{1}{\sigma};
+        \rect[prp]{0}{1}{1.5}{2.5}{\tau};
+      }
+    \end{align*}
+  }
+\end{frame}
+
+\begin{frame}
+  \frametitle{Cutting a GHZ circuit}
+  \vspace{-.25em}
+  \begin{align*}
+    \rho_{\t{GHZ}} = ~
+    \diagram{
+      \wire{0}{-.5}{3.75};
+      \wire{1.5}{-.5}{3.75};
+      \wire{-1.5}{-.5}{3.75};
+      \rect[prp]{-.5}{.5}{-1.5}{-.5}{0};
+      \rect[prp]{1}{2}{-1.5}{-.5}{0};
+      \rect[prp]{-2}{-1}{-1.5}{-.5}{0};
+      \rect{1}{2}{0}{1}{H};
+      \cnot{1.75}{1.5}{0};
+      \cnot{2.75}{0}{-1.5};
+    }
+    \uncover<2->{
+      ~ = ~
+      \sum_{\sigma,\tau} c_{\sigma\tau} ~
+      \diagram{
+        \wire{0}{-.5}{2.5};
+        \wire{0}{5}{6.5};
+        \wire{1.5}{-.5}{6.5};
+        \wire{-1.5}{-.5}{6.5};
+        \rect[prp]{-.5}{.5}{-1.5}{-.5}{0};
+        \rect[prp]{1}{2}{-1.5}{-.5}{0};
+        \rect[prp]{-2}{-1}{-1.5}{-.5}{0};
+        \rect{1}{2}{0}{1}{H};
+        \cnot{1.75}{1.5}{0};
+        \rect[msr]{-.5}{.5}{2.5}{3.5}{\sigma};
+        \rect[prp]{-.5}{.5}{4}{5}{\tau};
+        \cnot{5.5}{0}{-1.5};
+      }
+    }
+  \end{align*}
+
+  \vspace{1em}
+  \uncover<3->{
+    Circuit fragments -- smaller than original circuit!
+    \begin{align*}
+      \rho_1\p{\sigma} = ~
+      \diagram{
+        \wire{0}{-.5}{3};
+        \wire{1.5}{-.5}{3};
+        \rect[prp]{-.5}{.5}{-1.5}{-.5}{0};
+        \rect[prp]{1}{2}{-1.5}{-.5}{0};
+        \rect{1}{2}{0}{1}{H};
+        \cnot{1.75}{1.5}{0};
+        \rect[msr]{-.5}{.5}{2.5}{3.5}{\sigma};
+      }
+      &&
+      \t{and}
+      &&
+      \rho_2\p{\tau} = ~
+      \diagram{
+        \wire{0}{-.5}{1.5};
+        \wire{1.5}{-.5}{1.5};
+        \rect[prp]{-.5}{.5}{-1.5}{-.5}{0};
+        \rect[prp]{1}{2}{-1.5}{-.5}{\tau};
+        \cnot{0.5}{1.5}{0};
+      }
+    \end{align*}
+  }
+
+  \uncover<4->{
+    Reconstruction:
+    $\rho_{\t{GHZ}} = \displaystyle\sum_{\sigma,\tau} c_{\sigma\tau} ~
+    \rho_1\p{\sigma} \otimes \rho_2\p{\tau}$
+    \vspace{-.5em}
+    \begin{align*}
+      \diagram{
+        \wire{0}{-.5}{3.75};
+        \wire{1.5}{-.5}{3.75};
+        \wire{-1.5}{-.5}{3.75};
+        \rect[prp]{-.5}{.5}{-1.5}{-.5}{0};
+        \rect[prp]{1}{2}{-1.5}{-.5}{0};
+        \rect[prp]{-2}{-1}{-1.5}{-.5}{0};
+        \rect{1}{2}{0}{1}{H};
+        \cnot{1.75}{1.5}{0};
+        \cnot{2.75}{0}{-1.5};
+        \meter{-.5}{.5}{3.5}{4.5};
+        \meter{1}{2}{3.5}{4.5};
+        \meter{-2}{-1}{3.5}{4.5};
+      }
+      ~ = ~
+      \sum_{\sigma,\tau} c_{\sigma\tau} ~
+      \diagram{
+        \wire{0}{-.5}{3};
+        \wire{1.5}{-.5}{3};
+        \rect[prp]{-.5}{.5}{-1.5}{-.5}{0};
+        \rect[prp]{1}{2}{-1.5}{-.5}{0};
+        \rect{1}{2}{0}{1}{H};
+        \cnot{1.75}{1.5}{0};
+        \rect[msr]{-.5}{.5}{2.5}{3.5}{\sigma};
+        \meter{1}{2}{2.5}{3.5};
+      }
+      ~ \otimes ~
+      \diagram{
+        \wire{0}{-.5}{1.5};
+        \wire{1.5}{-.5}{1.5};
+        \rect[prp]{-.5}{.5}{-1.5}{-.5}{0};
+        \rect[prp]{1}{2}{-1.5}{-.5}{\tau};
+        \cnot{0.5}{1.5}{0};
+        \meter{-.5}{.5}{1.5}{2.5};
+        \meter{1}{2}{1.5}{2.5};
+      }
+    \end{align*}
+  }
+\end{frame}
+
+\begin{frame}
+  \frametitle{Improvements (teaser)}
+  \vspace{1em}
+  Reconstruction with one cut:
+  \begin{align*}
+    \rho = \sum_{\sigma,\tau} c_{\sigma\tau} ~
+    \rho_1\p{\sigma} \otimes \rho_2\p{\tau}
+  \end{align*}
+
+  \uncover<2->{
+    Old method: $\sigma,\tau\in\set{\op{M,s}}$ for Pauli ops $M$ and
+    $s\in\set{\pm1}$
+  }
+
+  \vspace{.5em}
+  \uncover<3->{
+    Loop over 8 states $\op{M,s}$
+    \vspace{.5em}
+    \begin{itemize}
+    \item total of $8^2=64$ terms \hfill
+
+      \vspace{.25em}
+      \begin{itemize}
+      \item<4-> $8^{2C}$ terms for a circuit with $C$ cuts
+      \end{itemize}
+
+      \vspace{.5em}
+    \item need $\rho_n\p{\sigma}$ for 6 {\it unique} states $\sigma$
+      (eigenstates of $X,Y,Z$)
+
+      \vspace{.25em}
+      \begin{itemize}
+      \item<4-> $6^{c_n}$ states for fragment $n$ with $c_n$ cuts
+    \end{itemize}
+    \end{itemize}
+  }
+
+  \vspace{.5em}
+  \uncover<5->{
+    New method:
+  }
+  \begin{itemize}
+    \vspace{.5em}
+  \item<5-> knowing $\rho_n\p{\sigma}$ for 4 states $\sigma$
+    sufficient to know {\it any} $\rho_n\p{M}$
+    \vspace{.5em}
+  \item<6-> using
+    $\rho = \f12 \displaystyle\sum_{M\in\set{X,Y,Z,I}} \rho_1\p{M}
+    \otimes \rho_2\p{M}$ directly $\to$ {\color<7->{red}{$4^C$} terms}
+  \end{itemize}
+  \vspace{-1em}
+  ~\hfill \uncover<7->{\color{red} sampling!}
+\end{frame}
+
+\end{document}
