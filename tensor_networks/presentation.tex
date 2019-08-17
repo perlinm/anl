@@ -1,0 +1,564 @@
+\documentclass[aspectratio=43,usenames,dvipsnames]{beamer}
+
+
+%%% beamer theme
+\usepackage{beamerthemelined}
+\usetheme{default} % theme with outline sidebar on the right
+\setbeamertemplate{headline}{} % clear header
+\setbeamertemplate{navigation symbols}{} % clear navigation symbols
+\setbeamertemplate{footline} % place frame number in footer
+{
+  \hbox{\begin{beamercolorbox}
+      [wd=1\paperwidth,ht=2.25ex,dp=1ex,right]{framenumber}
+      \usebeamercolor[fg]{subtitle}
+      \insertframenumber{} / \inserttotalframenumber
+      \hspace*{2ex}
+    \end{beamercolorbox}}
+}
+
+% remove the "Figure:" prefix from figure captions
+\usepackage{caption}
+\captionsetup[figure]{labelformat=empty}
+
+\usepackage{graphicx} % for figures
+\graphicspath{{./figures/}} % set path for all figures
+
+%%% symbols, notations, etc.
+\usepackage{physics,braket,bm,amssymb} % physics and math
+\usefonttheme[onlymath]{serif} % "regular" math font
+
+\renewcommand{\t}{\text} % text in math mode
+\newcommand{\f}[2]{\dfrac{#1}{#2}} % shorthand for fractions
+\newcommand{\p}[1]{\left(#1\right)} % parenthesis
+\renewcommand{\sp}[1]{\left[#1\right]} % square parenthesis
+\renewcommand{\set}[1]{\left\{#1\right\}} % curly parenthesis
+\newcommand{\bk}{\Braket} % shorthand for braket notation
+
+\renewcommand{\v}{\bm} % bold vectors
+\newcommand{\uv}[1]{\bm{\hat{#1}}} % unit vectors
+\renewcommand{\c}{\cdot}
+
+\newcommand{\U}{\mathbb{U}}
+\newcommand{\Z}{\mathbb{Z}}
+
+\renewcommand{\H}{\mathcal{H}}
+\renewcommand{\O}{\mathcal{O}}
+
+\usepackage{dsfont}
+\newcommand{\1}{\mathds{1}}
+
+\renewcommand*{\thefootnote}{\alph{footnote}}
+
+%%% diagonal dots
+\usepackage{rotating}
+\newcommand{\updots}{\text{\begin{rotate}{45}$\cdots$\end{rotate}}}
+\newcommand{\dndots}{\text{\begin{rotate}{-45}$\cdots$\end{rotate}}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% tensor network drawing tools
+%%% taken in part from arxiv.org/abs/1603.03039
+
+\usepackage{xcolor}
+\definecolor{tensorblue}{rgb}{0.8,0.8,1}
+\definecolor{tensorred}{rgb}{1,0.5,0.5}
+\definecolor{tensorpurp}{rgb}{1,0.5,1}
+
+\usepackage{tikz}
+\newcommand{\diagram}[1]{
+  \begin{tikzpicture}
+    [scale=.5, every node/.style = {sloped,allow upside down},
+    baseline = {([yshift=+0ex]current bounding box.center)},
+    rounded corners=2pt]
+    #1
+  \end{tikzpicture}}
+
+\tikzset{tenblue/.style={fill=tensorblue}}
+\tikzset{tengray/.style={fill=black!20}}
+
+\usetikzlibrary{calc}
+\newcommand{\wire}[4][]{
+  \draw[#1] (#3,#2) -- (#4,#2)
+}
+\newcommand{\vwire}[4][]{
+  \draw[#1] (#2,#3) -- (#2,#4)
+}
+\newcommand{\dwire}[5][]{
+  \draw[#1] (#4,#2) -- (#5,#3)
+}
+\newcommand{\rect}[6][tenblue]{
+  \draw[#1] (#4,#2) rectangle (#5,#3);
+  \draw ($ (#4,#2) !.5! (#5,#3) $) node {$#6$}
+}
+\renewcommand{\circ}[4][tenblue]{
+  \draw[#1] (#3,#2) circle (0.5) node {$#4$};
+}
+\newcommand{\Circ}[5][tenblue]{
+  \draw[#1] (#3,#2) circle (#4) node {$#5$};
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% for drawing arrows
+\usetikzlibrary{arrows,shapes}
+\tikzstyle{every picture}+=[remember picture]
+\newcommand{\tikzmark}[1]{
+  \tikz[remember picture] \node[coordinate] (#1) {#1};
+}
+
+% for uncovering under/over braces
+\newcommand<>{\uubrace}[2]{%
+  \onslide#3 \underbrace{ \onslide<1->%
+  #1%
+  \onslide#3 }_{#2} \onslide<1->%
+}
+\newcommand<>{\uobrace}[2]{%
+  \onslide#3 \overbrace{ \onslide<1->%
+  #1%
+  \onslide#3 }^{#2} \onslide<1->%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\title{Diagnosing {\color<4>{red} phase transitions} by evaluating
+  {\color<2>{red} tensor networks} with a
+  {\color<3>{red} quantum computer}}%
+\author{Michael A. Perlin \\[.5em]
+  Nouman T.~Butt, James C.~Osborn, Xiao-Yong Jin}%
+\date{19 August 2019}
+
+\begin{document}
+
+\begin{frame}[plain]
+  \titlepage
+\end{frame}
+\addtocounter{framenumber}{-1}
+
+\begin{frame}
+  \frametitle{Tensor networks}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      \begin{figure}
+        \centering
+        \includegraphics[width=0.5\textwidth]{network.pdf}
+      \end{figure}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \begin{figure}
+        \centering
+        \includegraphics[width=0.5\textwidth]{mera.png}
+      \end{figure}
+    \end{column}
+  \end{columns}
+
+  \begin{itemize} \setlength{\itemsep}{1em}
+  \item Machine learning
+    \vspace{.51em}
+    \begin{itemize}
+    \item Data classification, generative modeling
+    \end{itemize}
+
+  \item Physics
+    \vspace{.51em}
+    \begin{itemize}
+    \item Correlated quantum matter, quantum gravity
+    \end{itemize}
+  \end{itemize}
+
+  \begin{columns}
+    \begin{column}{0.85\textwidth}
+      \uncover<2->{
+        \begin{align*}
+          v = \sum_j v_j \uv e_j
+          &&
+          M = \sum_{j,k} M_{jk} \uv e_j \otimes \uv e_k
+        \end{align*}
+      }
+      \vspace{-2em}
+      \uncover<3->{
+        \begin{align*}
+          \diagram{
+            \wire{0}{0}{1};
+            \circ{0}{0}{v};
+          }
+          &&
+          \diagram{
+            \wire{0}{-1}{1};
+            \circ{0}{0}{M};
+          }
+        \end{align*}
+      }
+    \end{column}
+    \begin{column}{0.15\textwidth}
+      \uncover<4->{
+        \begin{align*}
+          \diagram{
+            \dwire{-1}{+1}{-1}{1};
+            \dwire{+1}{-1}{-1}{1};
+            \circ{0}{0}{T};
+          }
+        \end{align*}
+      }
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Evaluating a tensor network}
+  \vspace{1em}
+  \begin{itemize}
+  \item Edge contraction
+
+    \begin{align*}
+      \diagram{
+        \wire{0}{0}{1};
+        \wire{0}{2}{3};
+        \uncover<2->{
+          \wire[red,thick]{0}{1}{2};
+        }
+        \dwire{0}{+.75}{3}{3.75};
+        \dwire{0}{-.75}{3}{3.75};
+        \uncover<5->{
+          \dwire[blue,thick]{0}{+.75}{3}{3.75};
+          \dwire[blue,thick]{0}{-.75}{3}{3.75};
+        }
+        \circ{0}{0}{v};
+        \circ{0}{3}{R};
+      }
+      \uncover<4->{
+        ~ = ~
+        \diagram{
+          \dwire{0}{+.75}{0}{.75};
+          \dwire{0}{-.75}{0}{.75};
+          \uncover<5->{
+            \dwire[blue,thick]{0}{+.75}{0}{.75};
+            \dwire[blue,thick]{0}{-.75}{0}{.75};
+          }
+          \circ{0}{0}{S};
+        }
+      }
+      \uncover<3->{
+        &&
+        \to
+        &&
+        \sum_{\color{red} j} v_{\color{red} j}
+        R_{{\color{red} j}{\color<5->{blue} k\ell}}
+      }
+      \uncover<4->{
+        = S_{\color<5->{blue} k\ell}
+      }
+    \end{align*}
+
+  \item<6-> Bubbling
+
+    \vspace{-1em}
+    \begin{columns}
+      \begin{column}{0.5\textwidth}
+        \begin{align*}
+          \uncover<7->{{\color<9-13>{gray} X = ~}}
+          \diagram{
+            \newcommand{\lblA}{}
+            \newcommand{\lblB}{}
+            \newcommand{\lblC}{}
+            \newcommand{\lblD}{}
+            \newcommand{\lblE}{}
+            \newcommand{\lblF}{}
+            \newcommand{\clrA}{tenblue}
+            \newcommand{\clrB}{tenblue}
+            \newcommand{\clrC}{tenblue}
+            \newcommand{\clrD}{tenblue}
+            \newcommand{\clrE}{tenblue}
+            \newcommand{\clrF}{tenblue}
+            \newcommand{\pthA}{}
+            \newcommand{\pthB}{}
+            \newcommand{\pthC}{}
+            \newcommand{\pthD}{}
+            \newcommand{\pthE}{}
+            \newcommand{\pthF}{}
+            \only<8->{
+              \renewcommand{\lblA}{1}
+              \renewcommand{\lblB}{2}
+              \renewcommand{\lblC}{3}
+              \renewcommand{\lblD}{4}
+              \renewcommand{\lblE}{5}
+              \renewcommand{\lblF}{6}
+            }
+            \only<9>{
+              \renewcommand{\clrB}{tengray}
+              \renewcommand{\pthB}{dotted}
+            }
+            \only<9-10>{
+              \renewcommand{\clrC}{tengray}
+              \renewcommand{\pthC}{dotted}
+            }
+            \only<9-11>{
+              \renewcommand{\clrD}{tengray}
+              \renewcommand{\pthD}{dotted}
+            }
+            \only<9-12>{
+              \renewcommand{\clrE}{tengray}
+              \renewcommand{\pthE}{dotted}
+            }
+            \only<9-13>{
+              \renewcommand{\clrF}{tengray}
+              \renewcommand{\pthF}{dotted}
+            }
+            %
+            \coordinate (A) at (0,0);
+            \coordinate (B) at (2,1);
+            \coordinate (C) at (0,2);
+            \coordinate (D) at (2,3);
+            \coordinate (E) at (4,1);
+            \coordinate (F) at (4,3);
+            \coordinate (AB) at ($ (A) !.5! (B) $);
+            \coordinate (BC) at ($ (B) !.5! (C) $);
+            \coordinate (BD) at ($ (B) !.5! (D) $);
+            \coordinate (BE) at ($ (B) !.5! (E) $);
+            \coordinate (CD) at ($ (C) !.5! (D) $);
+            \coordinate (DE) at ($ (D) !.5! (E) $);
+            \coordinate (DF) at ($ (D) !.5! (F) $);
+            \coordinate (EF) at ($ (E) !.5! (F) $);
+            %
+            \draw[\pthB] (A) -- (B);
+            \draw[\pthC] (B) -- (C);
+            \draw[\pthD] (B) -- (D);
+            \draw[\pthE] (B) -- (E);
+            \draw[\pthD] (C) -- (D);
+            \draw[\pthE] (D) -- (E);
+            \draw[\pthF] (D) -- (F);
+            \draw[\pthF] (E) -- (F);
+            %
+            \only<9>{
+              \draw[blue,thick] (A) -- (AB);
+            }
+            \only<10>{
+              \draw[blue,thick] (B) -- (BC);
+            }
+            \only<10-11>{
+              \draw[blue,thick] (B) -- (BD);
+            }
+            \only<10-12>{
+              \draw[blue,thick] (B) -- (BE);
+            }
+            \only<11>{
+              \draw[blue,thick] (C) -- (CD);
+            }
+            \only<12>{
+              \draw[blue,thick] (D) -- (DE);
+            }
+            \only<12-13>{
+              \draw[blue,thick] (D) -- (DF);
+            }
+            \only<13>{
+              \draw[blue,thick] (E) -- (EF);
+            }
+            %
+            \draw[\clrA] (A) circle (0.5) node {\lblA};
+            \draw[\clrB] (B) circle (0.5) node {\lblB};
+            \draw[\clrC] (C) circle (0.5) node {\lblC};
+            \draw[\clrD] (D) circle (0.5) node {\lblD};
+            \draw[\clrE] (E) circle (0.5) node {\lblE};
+            \draw[\clrF] (F) circle (0.5) node {\lblF};
+          }
+        \end{align*}
+      \end{column}
+      \begin{column}{0.5\textwidth}
+        \uncover<15->{
+          \begin{align*}
+            \diagram{
+              \dwire{0}{+2}{0}{4};
+              \dwire{0}{-2}{0}{4};
+              \dwire{+1}{0}{2}{4};
+              \dwire{-1}{0}{2}{4};
+              %
+              \dwire[dotted]{+2}{+3.5}{4}{7};
+              \dwire[dotted]{+2}{+0.5}{4}{7};
+              \dwire[dotted]{-2}{-0.5}{4}{7};
+              \dwire[dotted]{-2}{-3.5}{4}{7};
+              \dwire[dotted]{0}{+1.5}{4}{7};
+              \dwire[dotted]{0}{-1.5}{4}{7};
+              \dwire[dotted]{+3}{+2.5}{6}{7};
+              \dwire[dotted]{-3}{-2.5}{6}{7};
+              %
+              \dwire[blue,thick]{+2}{+2.5}{4}{5};
+              \dwire[blue,thick]{+2}{+1.5}{4}{5};
+              \dwire[blue,thick]{-2}{-1.5}{4}{5};
+              \dwire[blue,thick]{-2}{-2.5}{4}{5};
+              \dwire[blue,thick]{0}{+.5}{4}{5};
+              \dwire[blue,thick]{0}{-.5}{4}{5};
+              %
+              \circ{0}{0}{};
+              \circ{+1}{2}{};
+              \circ{-1}{2}{};
+              \circ{-2}{4}{};
+              \circ{+0}{4}{};
+              \circ{+2}{4}{};
+              \circ[tengray]{+3}{6}{};
+              \circ[tengray]{+1}{6}{};
+              \circ[tengray]{-1}{6}{};
+              \circ[tengray]{-3}{6}{};
+            }
+          \end{align*}
+        }
+      \end{column}
+    \end{columns}
+  \end{itemize}
+  \uncover<16>{
+    \begin{center}
+      Exponential memory requirements!
+    \end{center}
+  }
+\end{frame}
+
+\begin{frame}
+  \frametitle{Quantum computers}
+  \begin{itemize} \setlength{\itemsep}{1.5em}
+  \item $N$ qubits $\to$ $2^N$-dimensional state space
+    \vspace{1em}
+    \begin{align*}
+      \ket\psi = \sum_{j,k,\ell,m,\cdots}
+      \psi_{jk\ell m\cdots} \ket{jk\ell m\cdots}
+    \end{align*}
+
+  \item<2-> Final measurement: $N$-bit string
+
+    \vspace{1.5em}
+    \begin{itemize}
+    \item Exponential memory capacity is ``intermediate''
+    \end{itemize}
+
+  \item<3-> Quantum circuit: bubbling a {\it unitary} tensor network
+    \hfill $T^\dag T=\1$
+
+    \vspace{1.5em}
+    \begin{itemize}
+    \item Tricks for computing non-unitary tensor networks
+    \end{itemize}
+
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{The $q$-state clock model}
+  \vspace{-1em}
+  \uncover<7->{
+    \tikz[remember picture,overlay]{
+      \node[anchor=south east] at (current page.south east)
+      {\includegraphics[width=0.4\textwidth]{clock_network.pdf}};
+    }
+  }
+  \begin{columns}
+    \begin{column}{0.75\textwidth}
+      \begin{itemize} \setlength{\itemsep}{1.5em}
+      \item spins $\v s_j=\p{\cos\theta_j,\sin\theta_j}$ at lattice
+        sites $j$
+      \item $q$ discrete angles $\theta_j\in\Z\times2\pi/q$
+        \uncover<3->{
+          \vspace{1.5em}
+          \begin{align*}
+            H &= -\sum_{\substack{\t{neighbors}\\\bk{j,k}}}
+            {\color<4>{red}
+              \uubrace<4->{\v s_j\c\v s_k}
+              {\substack{\t{interaction}\\\t{(spin aligment)}}}
+            }
+            - \sum_{\t{sites}~\ell}
+            {\color<5>{red}
+              \uubrace<5->{\v h\c\v s_\ell}
+              {\substack{\t{``magnetic'' field}\\\t{(global bias)}}}
+            }
+            \\[.5em]
+            \uncover<6->{
+              &= -\sum_{\bk{j,k}} \cos\p{\theta_j-\theta_k}
+              - h \sum_\ell \cos\theta_\ell
+            }
+          \end{align*}
+        }
+        \vspace{-1em}
+      \item<8-> Ising model: $q=2$
+      \item<8-> Classical XY model: $q\to\infty$
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.25\textwidth}
+      \begin{figure}
+        \centering
+        \uncover<2->{
+          \includegraphics[width=\textwidth]{clock.pdf}
+          \caption{12-state clock}
+        }
+      \end{figure}
+      \vspace{1.3\textwidth}~
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Partition function}
+  \begin{align*}
+    Z = \sum_{\substack{\t{all possible spin}\\\t{configurations}}}
+    e^{-\beta H}
+  \end{align*}
+
+  \begin{itemize} \setlength{\itemsep}{1.5em}
+  \item Summarizes all equilibrium physics at temperature $T=1/\beta$
+
+    \vspace{.5em}
+    \begin{itemize}
+    \item Mean energy, magnetism, heat capacity, etc.
+    \end{itemize}
+
+  \item<2-> Tensor network representation
+    \begin{align*}
+      Z =
+      \diagram{
+        \wire{0}{-1}{4};
+        \wire{3}{-1}{4};
+        \vwire{0}{-1}{4};
+        \vwire{3}{-1}{4};
+        %
+        \circ{0}{0}{n};
+        \circ{0}{3}{n};
+        \circ{3}{0}{n};
+        \circ{3}{3}{n};
+        %
+        \rect{-.5}{.5}{1}{2}{L};
+        \rect{2.5}{3.5}{1}{2}{L};
+        \rect{1}{2}{-.5}{.5}{L};
+        \rect{1}{2}{2.5}{3.5}{L};
+        %
+        \draw (-1.75,0) node {$\cdots$};
+        \draw (-1.75,3) node {$\cdots$};
+        \draw (4.75,0) node {$\cdots$};
+        \draw (4.75,3) node {$\cdots$};
+        %
+        \draw (0,-1.5) node {$\vdots$};
+        \draw (3,-1.5) node {$\vdots$};
+        \draw (0,4.75) node {$\vdots$};
+        \draw (3,4.75) node {$\vdots$};
+      }
+      ~ = ~
+      \diagram{
+        \wire{0}{-1}{2.5};
+        \wire{1.5}{-1}{2.5};
+        \vwire{0}{-1}{2.5};
+        \vwire{1.5}{-1}{2.5};
+        %
+        \circ{0}{0}{T};
+        \circ{0}{1.5}{T};
+        \circ{1.5}{0}{T};
+        \circ{1.5}{1.5}{T};
+        %
+        \draw (-1.75,0) node {$\cdots$};
+        \draw (-1.75,1.5) node {$\cdots$};
+        \draw (3.25,0) node {$\cdots$};
+        \draw (3.25,1.5) node {$\cdots$};
+        %
+        \draw (0,-1.5) node {$\vdots$};
+        \draw (1.5,-1.5) node {$\vdots$};
+        \draw (0,3.25) node {$\vdots$};
+        \draw (1.5,3.25) node {$\vdots$};
+      }
+    \end{align*}
+  \end{itemize}
+\end{frame}
+
+\end{document}
