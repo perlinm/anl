@@ -62,7 +62,7 @@
 \tikzset{tens/.style={fill=tensorblue}}
 \tikzset{prp/.style={fill=tensorgreen}}
 \tikzset{msr/.style={fill=tensorred}}
-\tikzset{tengrey/.style={fill=black!20}}
+\tikzset{tengray/.style={fill=black!20}}
 
 \usetikzlibrary{calc}
 \newcommand{\wire}[4][]{
@@ -90,7 +90,7 @@
 }
 
 % measurement meter
-\newcommand{\meter}[5][tengrey]{
+\newcommand{\meter}[5][tengray]{
   \rect[#1]{#2}{#3}{#4}{#5}{};
   \path[path picture={
     \draw[black] ([shift={(.1,.1)}]
@@ -107,7 +107,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \definecolor{green}{rgb}{0,0.6,0}
-\definecolor{grey}{rgb}{0.35,0.35,0.35}
+\definecolor{gray}{rgb}{0.35,0.35,0.35}
 
 % for drawing arrows
 \usetikzlibrary{arrows,shapes}
@@ -304,7 +304,7 @@
     \vspace{-1em}
     \begin{align*}
       \rho = \f12
-      \sum_{M,r,s} {\color{grey}{c_{Mr} c_{Ms}}} ~
+      \sum_{M,r,s} {\color{gray}{c_{Mr} c_{Ms}}} ~
       {\color{red} \tr_j\p{\rho \tikzmark{state1} \op{M,r}_j}}
       {\color{green} \otimes_j \tikzmark{state2} \op{M,s}}
       && ~
