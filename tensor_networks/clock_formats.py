@@ -19,7 +19,7 @@ def dat_name_builder(base_dir, bond_dimension, lattice_size, dimensions,
         return os.path.join(base_dir, base_name)
     return _build_method
 
-def fig_name_builder(base_dir, dimensions, use_XY, test):
+def fig_name_builder(base_dir, dimensions, use_vertex, use_XY, test_run):
     bool_text = _bool_text(use_vertex, use_XY, test_run)
     def _build_method(data_tag):
         base_name = f"{data_tag}_D{dimensions}{bool_text}.pdf"
