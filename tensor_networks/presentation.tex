@@ -75,6 +75,7 @@
 
 \tikzset{tenblue/.style={fill=tensorblue}}
 \tikzset{tengray/.style={fill=black!20}}
+\tikzset{tenorange/.style={fill=orange!30}}
 
 \usetikzlibrary{calc}
 \newcommand{\wire}[4][]{
@@ -95,6 +96,20 @@
 }
 \newcommand{\Circ}[5][tenblue]{
   \draw[#1] (#3,#2) circle (#4) node {$#5$};
+}
+
+\renewcommand{\dot}[2]{
+  \node at (#2,#1) [circle,fill,inner sep=1.5pt]{};
+}
+\renewcommand{\cross}[3][.25]{
+  \draw (#3,#2) circle (#1) node {};
+  \draw ($ (#3,#2) - (#1,0) $) -- ($ (#3,#2) + (#1,0) $) node{};
+  \draw ($ (#3,#2) - (0,#1) $) -- ($ (#3,#2) + (0,#1) $) node{};
+}
+\newcommand{\cnot}[3]{
+  \dot{#2}{#1};
+  \vwire{#1}{#2}{#3};
+  \cross{#3}{#1};
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -159,103 +174,103 @@
     \end{itemize}
 
   \item Physics
-    \vspace{.51em}
+    \vspace{.5em}
     \begin{itemize}
     \item Correlated quantum matter, quantum gravity
     \end{itemize}
   \end{itemize}
 
-  \begin{columns}
-    \begin{column}{0.85\textwidth}
-      \uncover<2->{
-        \begin{align*}
-          v = \sum_j v_j \uv e_j
-          &&
-          M = \sum_{j,k} M_{jk} \uv e_j \otimes \uv e_k
-        \end{align*}
-      }
-      \vspace{-2em}
+  \uncover<2->{
+    \begin{align*}
+      v = &\sum_j v_{\color<5->{blue} j} \uv e_j
+      &
+      M = &\sum_{j,k} M_{\color<5->{blue} jk} \uv e_j \otimes \uv e_k
+      &
       \uncover<3->{
-        \begin{align*}
-          \diagram{
-            \wire{0}{0}{1};
-            \circ{0}{0}{v};
-          }
-          &&
-          \diagram{
-            \wire{0}{-1}{1};
-            \circ{0}{0}{M};
-          }
-        \end{align*}
-      }
-    \end{column}
-    \begin{column}{0.15\textwidth}
+        &T_{\color<5->{blue} jk\ell m}
+      } \\
       \uncover<4->{
-        \begin{align*}
-          \diagram{
-            \dwire{-1}{+1}{-1}{1};
-            \dwire{+1}{-1}{-1}{1};
-            \circ{0}{0}{T};
+        &\diagram{
+          \wire{0}{0}{1};
+          \uncover<5->{
+            \wire[blue,thick]{0}{0}{1};
           }
-        \end{align*}
+          \circ{0}{0}{v};
+        }
+        &
+        &\diagram{
+          \wire{0}{-1}{1};
+          \uncover<5->{
+            \wire[blue,thick]{0}{-1}{1};
+          }
+          \circ{0}{0}{M};
+        }
+        &
+        &\diagram{
+          \dwire{-.75}{+.75}{-.75}{.75};
+          \dwire{+.75}{-.75}{-.75}{.75};
+          \uncover<5->{
+            \dwire[blue,thick]{-.75}{+.75}{-.75}{.75};
+            \dwire[blue,thick]{+.75}{-.75}{-.75}{.75};
+          }
+          \circ{0}{0}{T};
+        }
       }
-    \end{column}
-  \end{columns}
+    \end{align*}
+  }
 \end{frame}
 
 \begin{frame}
   \frametitle{Evaluating a tensor network}
+
   \vspace{1em}
-  \begin{itemize}
-  \item Edge contraction
-
-    \begin{align*}
+  Edge contraction
+  \begin{align*}
+    \diagram{
+      \wire{0}{0}{1};
+      \wire{0}{2}{3};
+      \uncover<2->{
+        \wire[red,thick]{0}{1}{2};
+      }
+      \dwire{0}{+.75}{3}{3.75};
+      \dwire{0}{-.75}{3}{3.75};
+      \uncover<5->{
+        \dwire[blue,thick]{0}{+.75}{3}{3.75};
+        \dwire[blue,thick]{0}{-.75}{3}{3.75};
+      }
+      \circ{0}{0}{v};
+      \circ{0}{3}{R};
+    }
+    \uncover<4->{
+      ~ = ~
       \diagram{
-        \wire{0}{0}{1};
-        \wire{0}{2}{3};
-        \uncover<2->{
-          \wire[red,thick]{0}{1}{2};
-        }
-        \dwire{0}{+.75}{3}{3.75};
-        \dwire{0}{-.75}{3}{3.75};
+        \dwire{0}{+.75}{0}{.75};
+        \dwire{0}{-.75}{0}{.75};
         \uncover<5->{
-          \dwire[blue,thick]{0}{+.75}{3}{3.75};
-          \dwire[blue,thick]{0}{-.75}{3}{3.75};
+          \dwire[blue,thick]{0}{+.75}{0}{.75};
+          \dwire[blue,thick]{0}{-.75}{0}{.75};
         }
-        \circ{0}{0}{v};
-        \circ{0}{3}{R};
+        \circ{0}{0}{S};
       }
-      \uncover<4->{
-        ~ = ~
-        \diagram{
-          \dwire{0}{+.75}{0}{.75};
-          \dwire{0}{-.75}{0}{.75};
-          \uncover<5->{
-            \dwire[blue,thick]{0}{+.75}{0}{.75};
-            \dwire[blue,thick]{0}{-.75}{0}{.75};
-          }
-          \circ{0}{0}{S};
-        }
-      }
-      \uncover<3->{
-        &&
-        \to
-        &&
-        \sum_{\color{red} j} v_{\color{red} j}
-        R_{{\color{red} j}{\color<5->{blue} k\ell}}
-      }
-      \uncover<4->{
-        = S_{\color<5->{blue} k\ell}
-      }
-    \end{align*}
+    }
+    \uncover<3->{
+      &&
+      \to
+      &&
+      \sum_{\color{red} j} v_{\color{red} j}
+      R_{{\color{red} j}{\color<5->{blue} k\ell}}
+    }
+    \uncover<4->{
+      = S_{\color<5->{blue} k\ell}
+    }
+  \end{align*}
 
-  \item<6-> Bubbling
-
-    \vspace{-1em}
-    \begin{columns}
-      \begin{column}{0.5\textwidth}
+  \vspace{-1em}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      \uncover<5->{
         \begin{align*}
-          \uncover<7->{{\color<9-13>{gray} X = ~}}
+          \uncover<7->{{\color<9-14>{gray} X = ~}}
           \diagram{
             \newcommand{\lblA}{}
             \newcommand{\lblB}{}
@@ -310,6 +325,7 @@
             \coordinate (D) at (2,3);
             \coordinate (E) at (4,1);
             \coordinate (F) at (4,3);
+            %
             \coordinate (AB) at ($ (A) !.5! (B) $);
             \coordinate (BC) at ($ (B) !.5! (C) $);
             \coordinate (BD) at ($ (B) !.5! (D) $);
@@ -318,6 +334,23 @@
             \coordinate (DE) at ($ (D) !.5! (E) $);
             \coordinate (DF) at ($ (D) !.5! (F) $);
             \coordinate (EF) at ($ (E) !.5! (F) $);
+            %
+            \coordinate (AAB) at ($ (A) !.7! (AB) $);
+            \coordinate (ABB) at ($ (AB) !.3! (B) $);
+            \coordinate (BBC) at ($ (B) !.7! (BC) $);
+            \coordinate (BCC) at ($ (BC) !.3! (C) $);
+            \coordinate (BBD) at ($ (B) !.7! (BD) $);
+            \coordinate (BDD) at ($ (BD) !.3! (D) $);
+            \coordinate (BBE) at ($ (B) !.7! (BE) $);
+            \coordinate (BEE) at ($ (BE) !.3! (E) $);
+            \coordinate (CCD) at ($ (C) !.7! (CD) $);
+            \coordinate (CDD) at ($ (CD) !.3! (D) $);
+            \coordinate (DDE) at ($ (D) !.7! (DE) $);
+            \coordinate (DEE) at ($ (DE) !.3! (E) $);
+            \coordinate (DDF) at ($ (D) !.7! (DF) $);
+            \coordinate (DFF) at ($ (DF) !.3! (F) $);
+            \coordinate (EEF) at ($ (E) !.7! (EF) $);
+            \coordinate (EFF) at ($ (EF) !.3! (F) $);
             %
             \draw[\pthB] (A) -- (B);
             \draw[\pthC] (B) -- (C);
@@ -353,6 +386,25 @@
               \draw[blue,thick] (E) -- (EF);
             }
             %
+            \only<10>{
+              \draw[red,thick] (AAB) -- (ABB);
+            }
+            \only<11>{
+              \draw[red,thick] (BBC) -- (BCC);
+            }
+            \only<12>{
+              \draw[red,thick] (BBD) -- (BDD);
+              \draw[red,thick] (CCD) -- (CDD);
+            }
+            \only<13>{
+              \draw[red,thick] (BBE) -- (BEE);
+              \draw[red,thick] (DDE) -- (DEE);
+            }
+            \only<14>{
+              \draw[red,thick] (DDF) -- (DFF);
+              \draw[red,thick] (EEF) -- (EFF);
+            }
+            %
             \draw[\clrA] (A) circle (0.5) node {\lblA};
             \draw[\clrB] (B) circle (0.5) node {\lblB};
             \draw[\clrC] (C) circle (0.5) node {\lblC};
@@ -361,49 +413,49 @@
             \draw[\clrF] (F) circle (0.5) node {\lblF};
           }
         \end{align*}
-      \end{column}
-      \begin{column}{0.5\textwidth}
-        \uncover<15->{
-          \begin{align*}
-            \diagram{
-              \dwire{0}{+2}{0}{4};
-              \dwire{0}{-2}{0}{4};
-              \dwire{+1}{0}{2}{4};
-              \dwire{-1}{0}{2}{4};
-              %
-              \dwire[dotted]{+2}{+3.5}{4}{7};
-              \dwire[dotted]{+2}{+0.5}{4}{7};
-              \dwire[dotted]{-2}{-0.5}{4}{7};
-              \dwire[dotted]{-2}{-3.5}{4}{7};
-              \dwire[dotted]{0}{+1.5}{4}{7};
-              \dwire[dotted]{0}{-1.5}{4}{7};
-              \dwire[dotted]{+3}{+2.5}{6}{7};
-              \dwire[dotted]{-3}{-2.5}{6}{7};
-              %
-              \dwire[blue,thick]{+2}{+2.5}{4}{5};
-              \dwire[blue,thick]{+2}{+1.5}{4}{5};
-              \dwire[blue,thick]{-2}{-1.5}{4}{5};
-              \dwire[blue,thick]{-2}{-2.5}{4}{5};
-              \dwire[blue,thick]{0}{+.5}{4}{5};
-              \dwire[blue,thick]{0}{-.5}{4}{5};
-              %
-              \circ{0}{0}{};
-              \circ{+1}{2}{};
-              \circ{-1}{2}{};
-              \circ{-2}{4}{};
-              \circ{+0}{4}{};
-              \circ{+2}{4}{};
-              \circ[tengray]{+3}{6}{};
-              \circ[tengray]{+1}{6}{};
-              \circ[tengray]{-1}{6}{};
-              \circ[tengray]{-3}{6}{};
-            }
-          \end{align*}
-        }
-      \end{column}
-    \end{columns}
-  \end{itemize}
-  \uncover<16>{
+      }
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \uncover<16->{
+        \begin{align*}
+          \diagram{
+            \dwire{0}{+2}{0}{4};
+            \dwire{0}{-2}{0}{4};
+            \dwire{+1}{0}{2}{4};
+            \dwire{-1}{0}{2}{4};
+            %
+            \dwire[dotted]{+2}{+3.5}{4}{7};
+            \dwire[dotted]{+2}{+0.5}{4}{7};
+            \dwire[dotted]{-2}{-0.5}{4}{7};
+            \dwire[dotted]{-2}{-3.5}{4}{7};
+            \dwire[dotted]{0}{+1.5}{4}{7};
+            \dwire[dotted]{0}{-1.5}{4}{7};
+            \dwire[dotted]{+3}{+2.5}{6}{7};
+            \dwire[dotted]{-3}{-2.5}{6}{7};
+            %
+            \dwire[blue,thick]{+2}{+2.5}{4}{5};
+            \dwire[blue,thick]{+2}{+1.5}{4}{5};
+            \dwire[blue,thick]{-2}{-1.5}{4}{5};
+            \dwire[blue,thick]{-2}{-2.5}{4}{5};
+            \dwire[blue,thick]{0}{+.5}{4}{5};
+            \dwire[blue,thick]{0}{-.5}{4}{5};
+            %
+            \circ{0}{0}{};
+            \circ{+1}{2}{};
+            \circ{-1}{2}{};
+            \circ{-2}{4}{};
+            \circ{+0}{4}{};
+            \circ{+2}{4}{};
+            \circ[tengray]{+3}{6}{};
+            \circ[tengray]{+1}{6}{};
+            \circ[tengray]{-1}{6}{};
+            \circ[tengray]{-3}{6}{};
+          }
+        \end{align*}
+      }
+    \end{column}
+  \end{columns}
+  \uncover<17>{
     \begin{center}
       Exponential memory requirements!
     \end{center}
@@ -412,130 +464,81 @@
 
 \begin{frame}
   \frametitle{Quantum computers}
-  \begin{itemize} \setlength{\itemsep}{1.5em}
+  \begin{itemize} \setlength{\itemsep}{1em}
   \item $N$ qubits $\to$ $2^N$-dimensional state space
-    \vspace{1em}
     \begin{align*}
-      \ket\psi = \sum_{j,k,\ell,m,\cdots}
-      \psi_{jk\ell m\cdots} \ket{jk\ell m\cdots}
+      \ket\psi = \sum_{j,k,\ell,\cdots}
+      \psi_{jk\ell\cdots} \ket{jk\ell\cdots}
+      \uncover<2->{
+        = ~
+        \diagram{
+          \wire{1.5}{0}{2};
+          \wire{+.5}{0}{2};
+          \wire{-1.5}{0}{2};
+          \draw (1.9,-.3) node {$\vdots$};
+          \rect{-2}{2}{0}{1.5}{\psi};
+        }
+      }
     \end{align*}
 
-  \item<2-> Final measurement: $N$-bit string
+  \item<3-> Quantum circuit: {\it unitary} tensor network
+    \begin{align*}
+      \diagram{
+        \wire{0}{-.5}{3.5};
+        \wire{1.5}{-.5}{3.5};
+        \wire{-1.5}{-.5}{3.5};
+        \rect[tengray]{1}{2}{0}{1}{H};
+        \cnot{1.75}{1.5}{0};
+        \cnot{2.75}{0}{-1.5};
+        \draw (-1,0) node {$\ket{0}$};
+        \draw (-1,1.5) node {$\ket{0}$};
+        \draw (-1,-1.5) node {$\ket{0}$};
+      }
+      ~ = ~
+      \diagram{
+        \wire{0}{-.5}{4.5};
+        \wire{1.5}{-.5}{4.5};
+        \wire{-1.5}{-.5}{4.5};
+        \rect{-.5}{.5}{-1.5}{-.5}{0};
+        \rect{1}{2}{-1.5}{-.5}{0};
+        \rect{-2}{-1}{-1.5}{-.5}{0};
+        \rect[tenorange]{1}{2}{0}{1}{};
+        \rect[tenorange]{-.5}{2}{1.5}{2.5}{};
+        \rect[tenorange]{-2}{.5}{3}{4}{};
+      }
+      ~ = ~
+      \diagram{
+        \wire{+1}{0}{2.5};
+        \wire{-1}{0}{2.5};
+        \wire{0}{0}{2.5};
+        \rect{-2}{2}{0}{2}{\psi_{\t{GHZ}}};
+      }
+    \end{align*}
 
-    \vspace{1.5em}
-    \begin{itemize}
-    \item Exponential memory capacity is ``intermediate''
-    \end{itemize}
-
-  \item<3-> Quantum circuit: bubbling a {\it unitary} tensor network
-    \hfill $T^\dag T=\1$
-
-    \vspace{1.5em}
-    \begin{itemize}
-    \item Tricks for computing non-unitary tensor networks
-    \end{itemize}
-
+  \item<4-> Tricks for computing non-unitary tensor networks ~\hfill
+    \uncover<5->{(!!!)}
   \end{itemize}
-\end{frame}
-
-\begin{frame}
-  \frametitle{The $q$-state clock model}
-  \vspace{-1em}
-  \uncover<7->{
-    \tikz[remember picture,overlay]{
-      \node[anchor=south east] at (current page.south east)
-      {\includegraphics[width=0.4\textwidth]{clock_network.pdf}};
-    }
-  }
-  \begin{columns}
-    \begin{column}{0.75\textwidth}
-      \begin{itemize} \setlength{\itemsep}{1.5em}
-      \item spins $\v s_j=\p{\cos\theta_j,\sin\theta_j}$ at lattice
-        sites $j$
-      \item $q$ discrete angles $\theta_j\in\Z\times2\pi/q$
-        \uncover<3->{
-          \vspace{1.5em}
-          \begin{align*}
-            H &= -\sum_{\substack{\t{neighbors}\\\bk{j,k}}}
-            {\color<4>{red}
-              \uubrace<4->{\v s_j\c\v s_k}
-              {\substack{\t{interaction}\\\t{(spin aligment)}}}
-            }
-            - \sum_{\t{sites}~\ell}
-            {\color<5>{red}
-              \uubrace<5->{\v h\c\v s_\ell}
-              {\substack{\t{``magnetic'' field}\\\t{(global bias)}}}
-            }
-            \\[.5em]
-            \uncover<6->{
-              &= -\sum_{\bk{j,k}} \cos\p{\theta_j-\theta_k}
-              - h \sum_\ell \cos\theta_\ell
-            }
-          \end{align*}
-        }
-        \vspace{-1em}
-      \item<8-> Ising model: $q=2$
-      \item<8-> Classical XY model: $q\to\infty$
-      \end{itemize}
-    \end{column}
-    \begin{column}{0.25\textwidth}
-      \begin{figure}
-        \centering
-        \uncover<2->{
-          \includegraphics[width=\textwidth]{clock.pdf}
-          \caption{12-state clock}
-        }
-      \end{figure}
-      \vspace{1.3\textwidth}~
-    \end{column}
-  \end{columns}
 \end{frame}
 
 \begin{frame}
   \frametitle{Partition function}
   \begin{align*}
-    Z = \sum_{\substack{\t{all possible spin}\\\t{configurations}}}
-    e^{-\beta H}
+    Z = \sum_{\substack{\t{all physical}\\\t{state}}} e^{-E/T}
   \end{align*}
 
-  \begin{itemize} \setlength{\itemsep}{1.5em}
-  \item Summarizes all equilibrium physics at temperature $T=1/\beta$
+  \begin{itemize} \setlength{\itemsep}{1em}
+  \item Energy $E$: function of state
+
+  \item Summarizes all equilibrium physics at temperature $T$
 
     \vspace{.5em}
     \begin{itemize}
-    \item Mean energy, magnetism, heat capacity, etc.
+    \item Mean energy, magnetization, heat capacity, etc.
     \end{itemize}
 
   \item<2-> Tensor network representation
     \begin{align*}
       Z =
-      \diagram{
-        \wire{0}{-1}{4};
-        \wire{3}{-1}{4};
-        \vwire{0}{-1}{4};
-        \vwire{3}{-1}{4};
-        %
-        \circ{0}{0}{n};
-        \circ{0}{3}{n};
-        \circ{3}{0}{n};
-        \circ{3}{3}{n};
-        %
-        \rect{-.5}{.5}{1}{2}{L};
-        \rect{2.5}{3.5}{1}{2}{L};
-        \rect{1}{2}{-.5}{.5}{L};
-        \rect{1}{2}{2.5}{3.5}{L};
-        %
-        \draw (-1.75,0) node {$\cdots$};
-        \draw (-1.75,3) node {$\cdots$};
-        \draw (4.75,0) node {$\cdots$};
-        \draw (4.75,3) node {$\cdots$};
-        %
-        \draw (0,-1.5) node {$\vdots$};
-        \draw (3,-1.5) node {$\vdots$};
-        \draw (0,4.75) node {$\vdots$};
-        \draw (3,4.75) node {$\vdots$};
-      }
-      ~ = ~
       \diagram{
         \wire{0}{-1}{2.5};
         \wire{1.5}{-1}{2.5};
@@ -560,5 +563,96 @@
     \end{align*}
   \end{itemize}
 \end{frame}
+
+\begin{frame}
+  \frametitle{The $q$-state clock (Potts) model}
+  \vspace{-1em}
+  \uncover<3->{
+    \tikz[remember picture,overlay]{
+      \node[anchor=south east] at (current page.south east)
+      {\includegraphics[width=0.4\textwidth]{clock_network.pdf}};
+    }
+  }
+  \begin{columns}
+    \begin{column}{0.75\textwidth}
+      \begin{itemize} \setlength{\itemsep}{1em}
+      \item Spins $\v s=\p{\cos\theta,\sin\theta}$
+      \item<2-> $q$ discrete angles $\theta\in\Z\times2\pi/q$
+        \uncover<3->{
+          \vspace{1.5em}
+          \begin{align*}
+            E &= -\sum_{\substack{\t{neighbors}\\\bk{j,k}}}
+            {\color<4>{red}
+              \uubrace<4->{\v s_j\c\v s_k}
+              {\substack{\t{interaction}\\\t{(spin aligment)}}}
+            }
+            - \sum_{\t{sites}~\ell}
+            {\color<5>{red}
+              \uubrace<5->{\v h\c\v s_\ell}
+              {\substack{\t{``magnetic'' field}\\\t{(global bias)}}}
+            }
+            \\[.5em]
+            \uncover<6->{
+              &= -\sum_{\bk{j,k}} \cos\p{\theta_j-\theta_k}
+              - h \sum_\ell \cos\theta_\ell
+            }
+          \end{align*}
+        }
+        \vspace{-1em}
+      \item<7-> Ising model: $q=2$
+      \item<7-> Classical XY model: $q\to\infty$
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.25\textwidth}
+      \begin{figure}
+        \centering
+        \uncover<2->{
+          \includegraphics[width=\textwidth]{clock.pdf}
+          \caption{12-state clock}
+        }
+      \end{figure}
+      \vspace{1.3\textwidth}~
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}
+  \frametitle{The punchline}
+
+  \vspace{1em}
+  Output of quantum computation: prob.~$p$ of finding all qubits in
+  $\ket{0}$
+
+  \vspace{-1em}
+  \begin{align*}
+    Z \propto \sqrt{p}
+  \end{align*}
+
+  \vspace{-.5em}
+  \uncover<2->{
+    \begin{figure}
+      \centering
+      \includegraphics<1-2>[width=0.7\textwidth]{probs_example.pdf}
+
+      \includegraphics<3->[width=0.7\textwidth]{probs_example_refs.pdf}
+    \end{figure}
+  }
+
+  \vspace{-1em}
+  \uncover<4->{
+    \begin{center}
+      Natural sensitivity to phase transitions!
+    \end{center}
+  }
+\end{frame}
+
+\begin{frame}[plain]
+  ~ \vfill
+  \begin{center}
+    \large \bf Thank you
+  \end{center}
+  \vfill ~
+\end{frame}
+\addtocounter{framenumber}{-1}
 
 \end{document}
