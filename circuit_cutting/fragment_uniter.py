@@ -266,7 +266,7 @@ def sample_positive_distribution(frag_dists, wire_path_map, circuit_wires, frag_
         def _indices(dist):
             return np.prod(dist.shape)
         def _probs(dist):
-            return dist.numpy().flatten() / dist.numpy().sum()
+            return dist.numpy().flatten() / _norm(dist)
         def _state(dist,idx):
             return tuple( int(bb) for bb in format(idx, f"0{len(dist.shape)}b") )
 
@@ -326,6 +326,75 @@ def sample_positive_distribution(frag_dists, wire_path_map, circuit_wires, frag_
             samples[circuit_sample] = 1
 
     return samples, total_norm
+
+# sample a separable-state ansatz for an approximation to the united distribution
+# return a histogram of samples
+# -- optionally return the full distribution if num_samples is 0
+def sample_separable_distribution(frag_amps, wire_path_map, circuit_wires, frag_wires,
+                                  num_samples):
+    # identify all cuts ("stitches") with a dictionary mapping exit wires to init wires
+    stitches = _identify_stitches(wire_path_map, circuit_wires)
+
+    # determine metadata about the distributions
+    frag_metadata = _get_distribution_metadata(frag_amps)
+    united_dist_shape, dist_obj_type, dist_dat_type = frag_metadata
+    assert( _is_complex(dist_dat_type) )
+    assert( not dist_obj_type is tf.SparseTensor )
+
+    # identify permutation that we will have to apply to the sampled states
+    qubit_perm = _united_axis_permutation(wire_path_map, circuit_wires, frag_wires)
+
+    # figure out how to get various info from amplitude vectors
+    def _norm(amps):
+        return ( abs( amps.numpy() )**2 ).sum()
+    def _indices(amps):
+        return np.prod(amps.shape)
+    def _probs(amps):
+        return abs( amps.numpy().flatten() )**2 / _norm(amps)
+    def _state(bits,idx):
+        return tuple( int(bb) for bb in format(idx, f"0{bits}b") )
+
+    # pick one sample from a distribution
+    def _sample_dist(dist):
+        idx = np.random.choice(_indices(dist), p = _probs(dist))
+        return _state(len(dist.shape), idx)
+
+    # if necessary, build an empty united distribution
+    if not num_samples:
+        real_zero = abs(tf.zeros(1, dtype = dist_dat_type))
+        full_dist = tf.zeros(united_dist_shape, dtype = real_zero.dtype)
+
+    # compute norms for all assigments of operators at all cut locations
+    norms = {}
+    for op_assignment in set_product([0,1], repeat = len(stitches)):
+        dist_factors = _collect_tensor_factors(frag_amps, stitches, op_assignment)
+        norms[op_assignment] = np.prod([ _norm(dist) for dist in dist_factors ])
+        if not num_samples:
+            full_dist += abs( reduce(tf_outer_product, dist_factors[::-1]) )**2
+
+    # return the united distribution if appropriate
+    if not num_samples:
+        return tf_transpose(full_dist, qubit_perm)
+
+    # determine the term to sample from for each sample
+    term_probs = np.array(list(norms.values()))
+    sample_term_indices = np.random.choice(len(term_probs), num_samples, p = term_probs)
+    sample_assignments = [ _state(len(stitches), idx)
+                           for idx in sample_term_indices ]
+
+    # collect a histogram of samples
+    samples = {}
+    for op_assignment in sample_assignments:
+        dist_factors = _collect_tensor_factors(frag_amps, stitches, op_assignment)
+        frag_sample = tuple( val for dist in dist_factors[::-1]
+                             for val in _sample_dist(dist) )
+        circuit_sample = tuple( frag_sample[pp] for pp in qubit_perm )
+        try:
+            samples[circuit_sample] += 1
+        except:
+            samples[circuit_sample] = 1
+
+    return samples
 
 # todo:
 # -- write "identity subtractor" to minimize the weight of negative terms (?)
