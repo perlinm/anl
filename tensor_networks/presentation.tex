@@ -135,9 +135,6 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\title{Diagnosing {\color<4>{red} phase transitions} by evaluating
-  {\color<2>{red} tensor networks} with a
-  {\color<3>{red} quantum computer}}%
 \author{Michael A. Perlin \\[.5em]
   Nouman T.~Butt, James C.~Osborn, Xiao-Yong Jin}%
 \date{19 August 2019}
@@ -145,7 +142,25 @@
 \begin{document}
 
 \begin{frame}[plain]
-  \titlepage
+  \begin{center}
+    {\usebeamercolor[fg]{title} \LARGE
+      Diagnosing
+      {\only<4>{\color{red}}phase transitions}
+      by evaluating \\
+      {\only<2>{\color{red}}tensor networks} with a
+      {\only<3>{\color{red}}quantum computer}
+    }
+  \end{center}
+  \vspace{2em}
+  \begin{center}
+    \large
+    \insertauthor
+  \end{center}
+  \vspace{1em}
+  \begin{center}
+    \large
+    \insertdate
+  \end{center}
 \end{frame}
 \addtocounter{framenumber}{-1}
 
@@ -221,8 +236,7 @@
 \end{frame}
 
 \begin{frame}
-  \frametitle{Evaluating a tensor network}
-
+  \frametitle{Building a tensor network}
   \vspace{1em}
   Edge contraction
   \begin{align*}
@@ -468,13 +482,13 @@
   \item $N$ qubits $\to$ $2^N$-dimensional state space
     \begin{align*}
       \ket\psi = \sum_{j,k,\ell,\cdots}
-      \psi_{jk\ell\cdots} \ket{jk\ell\cdots}
+      \psi_{{\color<2->{blue}{jk\ell}}\cdots} \ket{jk\ell\cdots}
       \uncover<2->{
         = ~
         \diagram{
-          \wire{1.5}{0}{2};
-          \wire{+.5}{0}{2};
-          \wire{-1.5}{0}{2};
+          \wire[blue,thick]{1.5}{0}{2};
+          \wire[blue,thick]{+.5}{0}{2};
+          \wire[blue,thick]{-1.5}{0}{2};
           \draw (1.9,-.3) node {$\vdots$};
           \rect{-2}{2}{0}{1.5}{\psi};
         }
@@ -516,20 +530,21 @@
     \end{align*}
 
   \item<4-> Tricks for computing non-unitary tensor networks ~\hfill
-    \uncover<5->{(!!!)}
+    \uncover<5->{({\color{red}!!!})}
   \end{itemize}
 \end{frame}
 
 \begin{frame}
   \frametitle{Partition function}
   \begin{align*}
-    Z = \sum_{\substack{\t{all physical}\\\t{state}}} e^{-E/T}
+    Z = \sum_{\substack{\t{all physical}\\\t{states}}} e^{-E/T}
   \end{align*}
 
+  \vspace{.5em}
   \begin{itemize} \setlength{\itemsep}{1em}
-  \item Energy $E$: function of state
+  \item Temperature $T$ (fixed), energy $E$ (function of state)
 
-  \item Summarizes all equilibrium physics at temperature $T$
+  \item Summarizes all physics at thermal equilibrium
 
     \vspace{.5em}
     \begin{itemize}
@@ -566,41 +581,29 @@
 
 \begin{frame}
   \frametitle{The $q$-state clock (Potts) model}
-  \vspace{-1em}
   \uncover<3->{
     \tikz[remember picture,overlay]{
       \node[anchor=south east] at (current page.south east)
       {\includegraphics[width=0.4\textwidth]{clock_network.pdf}};
     }
   }
+  \vspace{-1em}
   \begin{columns}
     \begin{column}{0.75\textwidth}
-      \begin{itemize} \setlength{\itemsep}{1em}
+      \begin{itemize} \setlength{\itemsep}{1.75em}
       \item Spins $\v s=\p{\cos\theta,\sin\theta}$
-      \item<2-> $q$ discrete angles $\theta\in\Z\times2\pi/q$
-        \uncover<3->{
-          \vspace{1.5em}
-          \begin{align*}
-            E &= -\sum_{\substack{\t{neighbors}\\\bk{j,k}}}
-            {\color<4>{red}
-              \uubrace<4->{\v s_j\c\v s_k}
-              {\substack{\t{interaction}\\\t{(spin aligment)}}}
-            }
-            - \sum_{\t{sites}~\ell}
-            {\color<5>{red}
-              \uubrace<5->{\v h\c\v s_\ell}
-              {\substack{\t{``magnetic'' field}\\\t{(global bias)}}}
-            }
-            \\[.5em]
-            \uncover<6->{
-              &= -\sum_{\bk{j,k}} \cos\p{\theta_j-\theta_k}
-              - h \sum_\ell \cos\theta_\ell
-            }
-          \end{align*}
-        }
+      \item<2-> $q$ discrete angles $\theta=\t{integer}\times2\pi/q$
+
+      \item<3-> Spin-aligning interactions
+
+        \begin{align*}
+          E
+          = -\sum_{\substack{\t{neighbors}\\\bk{j,k}}} \v s_j\c\v s_k
+          = -\sum_{\bk{j,k}} \cos\p{\theta_j-\theta_k}
+        \end{align*}
         \vspace{-1em}
-      \item<7-> Ising model: $q=2$
-      \item<7-> Classical XY model: $q\to\infty$
+
+      \item<4-> Ising ($q=2$) and XY ($q\to\infty$) models
       \end{itemize}
     \end{column}
     \begin{column}{0.25\textwidth}
@@ -620,29 +623,28 @@
   \frametitle{The punchline}
 
   \vspace{1em}
-  Output of quantum computation: prob.~$p$ of finding all qubits in
-  $\ket{0}$
+  Model $\to$ partition function (tensor network) $\to$ quantum
+  computer
 
-  \vspace{-1em}
-  \begin{align*}
-    Z \propto \sqrt{p}
-  \end{align*}
-
-  \vspace{-.5em}
   \uncover<2->{
-    \begin{figure}
-      \centering
-      \includegraphics<1-2>[width=0.7\textwidth]{probs_example.pdf}
+    \vspace{1em}
+    Output of quantum computation: prob.~$p$ of finding all qubits in
+    $\ket{0}$
 
-      \includegraphics<3->[width=0.7\textwidth]{probs_example_refs.pdf}
-    \end{figure}
+    \vspace{-1em}
+    \begin{align*}
+      Z = \sqrt{p} \times (\t{other factors})
+    \end{align*}
   }
 
-  \vspace{-1em}
-  \uncover<4->{
-    \begin{center}
-      Natural sensitivity to phase transitions!
-    \end{center}
+  \uncover<3->{
+    \vspace{-1.5em}
+    \begin{figure}
+      \centering
+      \includegraphics<1-3>[width=0.7\textwidth]{probs_example.pdf}
+
+      \includegraphics<4->[width=0.7\textwidth]{probs_example_refs.pdf}
+    \end{figure}
   }
 \end{frame}
 
