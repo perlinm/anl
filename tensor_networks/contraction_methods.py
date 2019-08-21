@@ -3,9 +3,14 @@
 import os
 import numpy as np
 
-import tensorflow as tf
+import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category = FutureWarning)
+    import tensorflow as tf
 tf.compat.v1.enable_v2_behavior()
+
 import tensornetwork as tn
 from tensornetwork.contractors import greedy_contractor
 

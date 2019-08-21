@@ -91,28 +91,24 @@ def vertex_tensor(network_type, dimension, spokes, inv_temp, field):
 
 # checkerboard tensor in the checkerboard tensor network of the clock model
 def checkerboard_tensor(dimension, spokes, inv_temp, field):
-    def _shift_idx(idx, direction):
-        return ( idx + 2**direction ) % 2**dimension
+    tensor_legs = 2**dimension
 
-    def _angle_diff(angles,idx,direction):
-        return angles[idx] - angles[_shift_idx(idx,direction)]
+    # shift a vertex on a hypercube to an adjacent vertex in a given direction
+    # all vertices are labeled by bitstrings (represented by integers),
+    #   so moving in a particular direction corresponds to XORing with a bitstring
+    #   that is only `1` on the bit corresponding to the given direction
+    def _shift(idx, direction):
+        return idx ^ (2**direction)
 
-    def _tensor_factor(idx, angle_vals):
-        angles = np.array(angle_vals) * 2*np.pi/spokes
-        site_term =  field / 2 * np.cos(angles[idx])
-        edge_term = sum( np.cos(_angle_diff(angles,idx,direction))
-                         for direction in range(dimension) ) / 2
-        scalar = np.exp(inv_temp * ( site_term + edge_term ))
-        return tf.one_hot(angle_vals[idx], spokes, on_value = scalar)
+    def _angles_coeff(angles):
+        site_term = field * sum( np.cos(angles) )
+        link_term = sum( np.cos(angles[idx]-angles[_shift(idx,direction)])
+                         for idx in range(tensor_legs) for direction in range(dimension) )
+        return np.exp(inv_temp/2 * ( site_term + link_term ))
 
-    def _tensor_term(angle_vals):
-        tensor_factors = [ _tensor_factor(idx, angle_vals)
-                           for idx in range(len(angle_vals)) ]
-        return reduce(tf_outer_product, tensor_factors)
-
-    tensor = sum( _tensor_term(angle_vals)
-                  for angle_vals in set_product(_integers(spokes), repeat = 2**dimension) )
-    return tensor / spokes**2
+    all_angles = set_product(_angles(spokes), repeat = tensor_legs)
+    vector = tf.constant([ _angles_coeff(angles) for angles in all_angles ])
+    return tf.reshape(vector, (spokes,)*tensor_legs)
 
 # construct tensor network that evaluates the the partition function of the clock model
 def clock_network(lattice_shape, spokes, inv_temp, field = 0, network_type = "fused"):
