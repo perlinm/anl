@@ -40,7 +40,7 @@ def bare_node_tensor(dimension, spokes, inv_temp, field):
     tensor = sum( np.exp(inv_temp*field * np.cos(angle)) *
                   tensor_power(tf.one_hot(idx, spokes, on_value = one_val), 2*dimension)
                   for idx, angle in zip(_integers(spokes), _angles(spokes)) )
-    return tensor / np.cosh(inv_temp*field)
+    return tensor / np.exp(abs(inv_temp*field))
 
 # link tensor in the "bare" tensor network of the clock model
 def bare_link_tensor(spokes, inv_temp):
