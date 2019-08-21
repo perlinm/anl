@@ -19,25 +19,19 @@ root_dir = os.path.dirname(sys.argv[0])
 
 spokes = int(sys.argv[1])
 lattice_size = int(sys.argv[2])
+network_type = sys.argv[3] # must be one of "bare", "fused", "XY", or "chkr"
 
-use_XY = False
-use_vertex = True
-dimensions = 2
-
-max_inv_temp = 5
+max_inv_temp = 3
 small_value = 1e-6
 
-inv_temp_steps = 500
-diff_field_steps = 5
+inv_temp_steps = 20
+diff_field_steps = 2
 
 test_run = True
 
+dimensions = 2
 quantum_backend = False
 print_steps = True
-
-# we don't have a checkerboard tensor for the XY model,
-# so we can't both use XY tensors and *not* use vertex tensors
-assert( not ( use_XY and not use_vertex ) )
 
 ##########################################################################################
 # collect derived info
@@ -53,12 +47,15 @@ header += f"max_field_val: {max_field_val}"
 
 base_dir = os.path.join(root_dir, dat_dir)
 dat_file_name = dat_name_builder(base_dir, spokes, lattice_size,
-                                 dimensions, use_vertex, use_XY, test_run)
+                                 dimensions, network_type, test_run)
 
-if use_vertex:
+if network_type in [ "fused", "XY" ]:
     _bubbler = cubic_bubbler
-else: # use checkerboard tensor
+elif network_type == "chkr":
     _bubbler = checkerboard_bubbler
+elif network_type == "bare":
+    def _bubbler(lattice_shape):
+        return cubic_bubbler(lattice_shape, True)
 
 if quantum_backend:
     def _contraction_results(_, nodes, bubbler):
@@ -83,7 +80,7 @@ for bb, inv_temp in enumerate(inv_temps):
         field = field_val / inv_temp if inv_temp != 0 else 0
         net, nodes, _, log_net_scale \
             = clock_network(lattice_shape, spokes, inv_temp, field,
-                            use_vertex = use_vertex, use_XY = use_XY)
+                            network_type = network_type)
         bubbler = _bubbler(lattice_shape)
         log_probs[bb,hh], log_norms[bb,hh] = _contraction_results(net, nodes, bubbler)
         log_norms[bb,hh] += log_net_scale

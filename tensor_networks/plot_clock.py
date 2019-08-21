@@ -18,18 +18,16 @@ show_figures = "show" in sys.argv[1:]
 ##########################################################################################
 
 spoke_vals = [ 3 ]
-lattice_size_vals = [ 3 ]
-max_plot_inv_temp = 2.5
-
-use_XY = False
-use_vertex = True
+lattice_size_vals = [ 4 ]
+network_type = "fused"
 dimensions = 2
 
 test_run = True
+max_plot_inv_temp = None
 
 crit_refline = True
 normalize_to_crit = True
-if use_XY and crit_refline:
+if network_type == "XY" and crit_refline:
     print("WARNING: critical temperatures for XY model not provided")
     crit_refline = False
 
@@ -103,7 +101,7 @@ for spokes, lattice_size in set_product(spoke_vals, lattice_size_vals):
 
     dat_base_dir = os.path.join(root_dir, dat_dir)
     dat_file_name = dat_name_builder(dat_base_dir, spokes, lattice_size,
-                                     dimensions, use_vertex, use_XY, test_run)
+                                     dimensions, network_type, test_run)
 
     try:
         log_probs = np.loadtxt(dat_file_name("log_probs"))
@@ -181,8 +179,7 @@ for fig_name in plt.get_figlabels():
 
 if save_figures:
     fig_base_dir = os.path.join(root_dir, fig_dir)
-    fig_file_name = fig_name_builder(fig_base_dir, dimensions,
-                                     use_vertex, use_XY, test_run)
+    fig_file_name = fig_name_builder(fig_base_dir, dimensions, network_type, test_run)
     if not os.path.isdir(fig_base_dir): os.mkdir(fig_base_dir)
     for fig_name in plt.get_figlabels():
         plt.figure(fig_name)

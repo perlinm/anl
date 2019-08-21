@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 
 import numpy as np
-import scipy
+import scipy.special
 
 import os
-import tensorflow as tf
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category = FutureWarning)
+    import tensorflow as tf
 tf.compat.v1.enable_v2_behavior()
 
 from linalg_methods import tf_outer_product, tensor_power
@@ -13,6 +16,8 @@ from network_methods import cubic_network, checkerboard_network
 
 from itertools import product as set_product
 from functools import reduce
+
+tf_real_dtype = tf.float64
 
 ##########################################################################################
 # methods for constructing a tensor network that represents the partition function
@@ -30,25 +35,37 @@ def _integers(spokes, center_on_zero = False):
 def _angles(spokes, center_on_zero = False):
     return ( val * 2*np.pi/spokes for val in _integers(spokes, center_on_zero) )
 
+# vertex tensor in the "bare" tensor network of the clock model
+def bare_node_tensor(dimension, spokes, inv_temp, field):
+    return sum( np.exp(inv_temp*field * np.cos(angle)) *
+                tensor_power(tf.one_hot(idx, spokes, dtype = tf_real_dtype), 2*dimension)
+                for idx, angle in zip(_integers(spokes), _angles(spokes)) )
+
+# link tensor in the "bare" tensor network of the clock model
+def bare_link_tensor(spokes, inv_temp):
+    return tf.constant([ [ np.exp(inv_temp * np.cos(theta-phi))
+                           for phi in _angles(spokes) ]
+                         for theta in _angles(spokes) ])
+
 # singular values of the link matrix
 def _diag_val(spokes, idx, inv_temp):
     return sum( np.exp( inv_temp * np.cos(angle) ) * np.cos( idx * angle )
                 for angle in _angles(spokes) ) / spokes
 
 # thermal edge state vectors
-def _therm_vec(spokes, idx, inv_temp):
-    return tf.constant([ np.sqrt(abs(_diag_val(spokes, ww, inv_temp))) *
-                         np.exp(1j*ww*idx*2*np.pi/spokes)
-                         for ww in _integers(spokes) ])
-def _therm_mat(dimension, spokes, idx, inv_temp):
-    vec = tensor_power(_therm_vec(spokes, idx, inv_temp), dimension)
+def _therm_vec(spokes, angle, inv_temp):
+    return tf.constant([ np.sqrt(abs(_diag_val(spokes, idx, inv_temp))) *
+                         np.exp(1j*idx*angle)
+                         for idx in _integers(spokes) ])
+def _therm_mat(dimension, spokes, angle, inv_temp):
+    vec = tensor_power(_therm_vec(spokes, angle, inv_temp), dimension)
     return tf_outer_product(vec, tf.math.conj(vec))
 
-# vertex tensor in the cubic tensor network of the clock model
-def vertex_tensor_clock(dimension, spokes, inv_temp, field):
-    tensor = sum( np.exp(inv_temp*field * np.cos(idx*2*np.pi/spokes)) *
-                  _therm_mat(dimension, spokes, idx, inv_temp)
-                  for idx in _integers(spokes) )
+# fused vertex tensor in the cubic tensor network of the clock model
+def vertex_tensor_fused(dimension, spokes, inv_temp, field):
+    tensor = sum( np.exp(inv_temp*field * np.cos(angle)) *
+                  _therm_mat(dimension, spokes, angle, inv_temp)
+                  for angle in _angles(spokes) )
     return tf.math.real(tensor) / spokes
 
 # vertex tensor in the cubic tensor network of the XY model
@@ -64,6 +81,13 @@ def vertex_tensor_XY(dimension, bond_dimension, inv_temp, field):
                            _mod_diag_val(indices, inv_temp*field)
                            for indices in index_vals ])
     return tf.reshape(vector, [bond_dimension]*2*dimension)
+
+# vertex tensor in either of the clock or XY models
+def vertex_tensor(network_type, dimension, spokes, inv_temp, field):
+    if network_type == "fused":
+        return vertex_tensor_fused(dimension, spokes, inv_temp, field)
+    if network_type == "XY":
+        return vertex_tensor_XY(dimension, spokes, inv_temp, field)
 
 # checkerboard tensor in the checkerboard tensor network of the clock model
 def checkerboard_tensor(dimension, spokes, inv_temp, field):
@@ -90,29 +114,52 @@ def checkerboard_tensor(dimension, spokes, inv_temp, field):
                   for angle_vals in set_product(_integers(spokes), repeat = 2**dimension) )
     return tensor / spokes**2
 
-# construct tensor network on a periodic primitive hypercubic lattice
-def clock_network(lattice_shape, spokes, inv_temp, field = 0,
-                  use_vertex = True, use_XY = False):
-    if use_vertex:
-        if use_XY:
-            vertex_tensor = vertex_tensor_XY
-        else:
-            vertex_tensor = vertex_tensor_clock
-        tensor = vertex_tensor(len(lattice_shape), spokes, inv_temp, field)
+# construct tensor network that evaluates the the partition function of the clock model
+def clock_network(lattice_shape, spokes, inv_temp, field = 0, network_type = "fused"):
+    dimension = len(lattice_shape)
+
+    if network_type == "bare":
+
+        node_tensor = bare_node_tensor(dimension, spokes, inv_temp, field)
+        link_tensor = bare_link_tensor(spokes, inv_temp)
+
+        node_tensor_num = np.prod(lattice_shape)
+        link_tensor_num = 2 * node_tensor_num
+
+        node_tensor_norm = tf.norm(node_tensor)
+        link_tensor_norm = tf.norm(link_tensor)
+
+        normed_node_tensor = node_tensor / node_tensor_norm
+        normed_link_tensor = link_tensor / link_tensor_norm
+
+        log_net_scale = ( node_tensor_num * np.log(node_tensor_norm) +
+                          link_tensor_num * np.log(link_tensor_norm) )
+
+        def tensor_bundle(loc):
+            if all( idx % 1 == 0 for idx in loc ):
+                return normed_node_tensor
+            else:
+                return normed_link_tensor
+
+        link_tensors = True
+        net, nodes, edges = cubic_network(lattice_shape, tensor_bundle, link_tensors)
+        return net, nodes, edges, log_net_scale
+
+    if network_type in [ "fused", "XY" ]:
+        tensor = vertex_tensor(network_type, dimension, spokes, inv_temp, field)
         tensor_num = np.prod(lattice_shape)
-    else:
+        _network_generator = cubic_network
+
+    elif network_type == "chkr":
         assert(all( num % 2 == 0 for num in lattice_shape ))
-        tensor = checkerboard_tensor(len(lattice_shape), spokes, inv_temp, field)
-        tensor_num = np.prod(lattice_shape) / 2**(len(lattice_shape)-1)
+        tensor = checkerboard_tensor(dimension, spokes, inv_temp, field)
+        tensor_num = np.prod(lattice_shape) / 2**(dimension-1)
+        _network_generator = checkerboard_network
 
     tensor_norm = tf.norm(tensor)
     normed_tensor = tensor / tensor_norm
     log_net_scale = tensor_num * np.log(tensor_norm)
     def tensor_bundle(_): return normed_tensor
-
-    if use_vertex:
-        net, nodes, edges = cubic_network(lattice_shape, tensor_bundle)
-    else:
-        net, nodes, edges = checkerboard_network(lattice_shape, tensor_bundle)
+    net, nodes, edges = _network_generator(lattice_shape, tensor_bundle)
 
     return net, nodes, edges, log_net_scale
