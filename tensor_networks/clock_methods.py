@@ -17,8 +17,6 @@ from network_methods import cubic_network, checkerboard_network
 from itertools import product as set_product
 from functools import reduce
 
-tf_real_dtype = tf.float64
-
 ##########################################################################################
 # methods for constructing a tensor network that represents the partition function
 #   of a classical q-state clock model on a periodic primitive hypercubic lattice
@@ -37,15 +35,18 @@ def _angles(spokes, center_on_zero = False):
 
 # vertex tensor in the "bare" tensor network of the clock model
 def bare_node_tensor(dimension, spokes, inv_temp, field):
-    return sum( np.exp(inv_temp*field * np.cos(angle)) *
-                tensor_power(tf.one_hot(idx, spokes, dtype = tf_real_dtype), 2*dimension)
-                for idx, angle in zip(_integers(spokes), _angles(spokes)) )
+    one_val = np.exp(0)
+    def _val(angle): return np.exp(inv_temp*field * np.cos(angle))
+    tensor = sum( np.exp(inv_temp*field * np.cos(angle)) *
+                  tensor_power(tf.one_hot(idx, spokes, on_value = one_val), 2*dimension)
+                  for idx, angle in zip(_integers(spokes), _angles(spokes)) )
+    return tensor / np.cosh(inv_temp*field)
 
 # link tensor in the "bare" tensor network of the clock model
 def bare_link_tensor(spokes, inv_temp):
     return tf.constant([ [ np.exp(inv_temp * np.cos(theta-phi))
                            for phi in _angles(spokes) ]
-                         for theta in _angles(spokes) ])
+                         for theta in _angles(spokes) ]) / spokes
 
 # singular values of the link matrix
 def _diag_val(spokes, idx, inv_temp):
