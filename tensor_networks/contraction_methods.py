@@ -200,7 +200,7 @@ def classical_contraction(net, nodes, bubbler = None):
         eaten_nodes.add(node)
         for edge in inp_edges:
             dangling_edges.remove(edge)
-        dangling_edges = out_edges + dangling_edges
+        dangling_edges += out_edges
 
     # compute value of network
     tn.contractors.greedy_contractor.greedy(net)

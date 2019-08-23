@@ -111,8 +111,13 @@ def alternating_bubbler(lattice_shape, lattice_vectors, link_tensors = False):
                         for signs in signed_ones
                         for sign, vec in zip(signs, other_vecs) ]
 
-        half_scan = scanning_bubbler(lattice_shape, new_vectors)
-        return half_scan + [ _add(pos,base_vec,lattice_shape) for pos in half_scan ]
+        extended_lattice_shape = [ dim if dim % 2 == 0 else dim + 1
+                                   for dim in lattice_shape ]
+        fst_scan = scanning_bubbler(extended_lattice_shape, new_vectors)
+        snd_scan = [ _add(pos,base_vec,extended_lattice_shape) for pos in fst_scan ]
+        full_scan = sorted(fst_scan) + sorted(snd_scan)
+        return [ pos for pos in full_scan if
+                 all( pp < ss for pp,ss in zip(pos, lattice_shape) ) ]
 
     else:
         zero_pos = (0,) * len(lattice_shape)
