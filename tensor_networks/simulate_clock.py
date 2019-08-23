@@ -24,7 +24,7 @@ network_type = sys.argv[3] # must be one of "bare", "fused", "XY", or "chkr"
 max_inv_temp = 3
 small_value = 1e-6
 
-inv_temp_steps = 20
+inv_temp_steps = 50
 diff_field_steps = 2
 
 test_run = True
@@ -55,7 +55,7 @@ elif network_type == "chkr":
     _bubbler = checkerboard_bubbler
 elif network_type == "bare":
     def _bubbler(lattice_shape):
-        return cubic_bubbler(lattice_shape, link_tensors = True)
+        return cubic_bubbler(lattice_shape, link_tensors = True, scan = False)
 
 if quantum_backend:
     def _contraction_results(_, nodes, bubbler):
