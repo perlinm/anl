@@ -5,8 +5,10 @@ import tensornetwork as tn
 from itertools import product as set_product
 
 # add vectors on the periodic lattice
-def _add(xx, yy, lattice_shape):
-    vector_sum = ( np.array(xx) + np.array(yy) ) % np.array(lattice_shape)
+def _add(xx, yy, lattice_shape = None):
+    vector_sum = np.array(xx) + np.array(yy)
+    if lattice_shape:
+        vector_sum %= np.array(lattice_shape)
     return tuple( int(vv) if vv % 1 == 0 else vv for vv in vector_sum )
 
 # identify all occupied sites in a crystal
@@ -103,8 +105,14 @@ def scanning_bubbler(lattice_shape, lattice_vectors, link_tensors = False):
 #   to maximize the number of 0 <--> X tensor flattenings
 def alternating_bubbler(lattice_shape, lattice_vectors, link_tensors = False):
     if not link_tensors:
-        scan = scanning_bubbler(lattice_shape, lattice_vectors)
-        return scan[::2] + scan[1::2]
+        base_vec, other_vecs = lattice_vectors[0], lattice_vectors[1:]
+        signed_ones = set_product([+1,-1], repeat = len(lattice_shape)-1)
+        new_vectors = [ _add(base_vec, sign*np.array(vec))
+                        for signs in signed_ones
+                        for sign, vec in zip(signs, other_vecs) ]
+
+        half_scan = scanning_bubbler(lattice_shape, new_vectors)
+        return half_scan + [ _add(pos,base_vec,lattice_shape) for pos in half_scan ]
 
     else:
         zero_pos = (0,) * len(lattice_shape)
