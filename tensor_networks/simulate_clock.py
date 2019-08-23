@@ -55,7 +55,7 @@ elif network_type == "chkr":
     _bubbler = checkerboard_bubbler
 elif network_type == "bare":
     def _bubbler(lattice_shape):
-        return cubic_bubbler(lattice_shape, True)
+        return cubic_bubbler(lattice_shape, link_tensors = True)
 
 if quantum_backend:
     def _contraction_results(_, nodes, bubbler):
