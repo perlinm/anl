@@ -6,11 +6,15 @@ from itertools import product as set_product
 
 # add vectors on the periodic lattice
 def _add(xx, yy, lattice_shape):
-    return tuple( ( np.array(xx) + np.array(yy) ) % np.array(lattice_shape) )
+    vector_sum = ( np.array(xx) + np.array(yy) ) % np.array(lattice_shape)
+    return tuple( int(vv) if vv % 1 == 0 else vv for vv in vector_sum )
 
 # identify all occupied sites in a crystal
-def _crystal_sites(lattice_shape, lattice_vectors):
-    locations = [ (0,)*len(lattice_shape) ]
+def _crystal_sites(lattice_shape, lattice_vectors, initial_location = None):
+    if initial_location:
+        locations = [ initial_location ]
+    else:
+        locations = [ (0,)*len(lattice_shape) ]
     for lattice_vector in lattice_vectors:
         for base_loc in locations:
             new_loc = _add(base_loc, lattice_vector, lattice_shape)
@@ -20,7 +24,7 @@ def _crystal_sites(lattice_shape, lattice_vectors):
     return locations
 
 def _half(vec):
-    return tuple( vv/2 for vv in vec )
+    return tuple( vv//2 if vv % 2 == 0 else vv/2 for vv in vec )
 
 ##########################################################################################
 
@@ -81,66 +85,33 @@ def crystal_network(lattice_shape, lattice_vectors, tensor_bundle, link_tensors 
 
     return net, nodes, edges
 
-# construct a "bubbler" for a crystal network by swallowing one node at a time
-# the swallowing procedure minimizes, at each step:
-# (i) the number of dangling edges, and
-# (ii) the distance of the bubbled node from the "origin", or first node
-def crystal_bubbler(lattice_shape, lattice_vectors, link_tensors = False):
-    # identify all "free", un-bubbled nodes
-    free_nodes = _crystal_sites(lattice_shape, lattice_vectors)
+# return a bubbler that "scans" through a lattice,
+#   bubbling adjacent tensors in a single row,
+#   and subsequently bubbling adjacent rows likewise
+def scanning_bubbler(lattice_shape, lattice_vectors, link_tensors = False):
+    if not link_tensors:
+        return _crystal_sites(lattice_shape, lattice_vectors)
 
-    # identify all nodes adjacent to a given node
-    def _adjacent_nodes(node):
-        return ( [ _add(node, step, lattice_shape)
-                   for step in lattice_vectors ] +
-                 [ _add(node, -np.array(step), lattice_shape)
-                   for step in lattice_vectors ] )
+    else:
+        zero_pos = (0,) * len(lattice_shape)
+        half_vecs = [ _half(vec) for vec in lattice_vectors ]
+        sublattice_scans = [ _crystal_sites(lattice_shape, lattice_vectors, initial_pos)
+                             for initial_pos in [ zero_pos ] + half_vecs ]
+        return [ pos for cell_scan in zip(*sublattice_scans) for pos in cell_scan ]
 
-    # define a distance from the origin
-    def _dist(node):
-        return sum( ( min(pos, size-pos) )**2 for pos, size in zip(node, lattice_shape) )
+# return an bubbler that "alternates" through the lattice
+#   to maximize the number of 0 <--> X tensor flattenings
+def alternating_bubbler(lattice_shape, lattice_vectors, link_tensors = False):
+    if not link_tensors:
+        scan = scanning_bubbler(lattice_shape, lattice_vectors)
+        return scan[::2] + scan[1::2]
 
-    # swallow a single (arbitrary) node
-    bubbler = [ (0,)*len(lattice_shape) ]
-    free_nodes.remove(bubbler[0])
-
-    # keep track of all adjacent nodes and their distance from the "origin"
-    adjacency_data = { adjacent_node : { "dist" : _dist(adjacent_node) }
-                       for adjacent_node in _adjacent_nodes(bubbler[0]) }
-
-    # return the tuple determining the order in which adjacent nodes should be swallowed
-    def _bubbling_order(node):
-        return ( adjacency_data[node]["gain"], adjacency_data[node]["dist"] )
-
-    while free_nodes:
-        # determine the numer of dangling edges we would gain
-        # from absorbing each adjacent node
-        for adj_node, adj_node_data in adjacency_data.items():
-            adj_adj_nodes = [ node for node in _adjacent_nodes(adj_node) ]
-            adj_node_data["gain"] = sum( -1 if node in bubbler else 1
-                                         for node in adj_adj_nodes )
-
-        # identify the node to swallow
-        new_node = sorted(adjacency_data.keys(), key = _bubbling_order)[0]
-
-        # swallow all links between bubbled nodes and new node
-        if link_tensors:
-            for lattice_vector in lattice_vectors:
-                adj_to_new_node = _add(new_node, lattice_vector, lattice_shape)
-                if adj_to_new_node in bubbler:
-                    bubbler.append(_add(new_node, _half(lattice_vector), lattice_shape))
-
-        # swallow new node and remove it from the list of free nodes
-        bubbler.append(new_node)
-        free_nodes.remove(new_node)
-        del adjacency_data[new_node]
-
-        # update adjacency data
-        for node in _adjacent_nodes(new_node):
-            if node not in bubbler:
-                adjacency_data[node] = { "dist" : _dist(node) }
-
-    return bubbler
+    else:
+        zero_pos = (0,) * len(lattice_shape)
+        half_vecs = [ _half(vec) for vec in lattice_vectors ]
+        sublattice_scans = [ _crystal_sites(lattice_shape, lattice_vectors, initial_pos)
+                             for initial_pos in half_vecs + [ zero_pos ] ]
+        return [ pos for sublattice_scan in sublattice_scans for pos in sublattice_scan ]
 
 ##########################################################################################
 
@@ -155,9 +126,12 @@ def cubic_network(lattice_shape, tensor_bundle, link_tensors = False):
     lattice_vectors = _cubic_lattice_vectors(lattice_shape)
     return crystal_network(lattice_shape, lattice_vectors, tensor_bundle, link_tensors)
 
-def cubic_bubbler(lattice_shape, link_tensors = False):
+def cubic_bubbler(lattice_shape, link_tensors = False, scan = True):
     lattice_vectors = _cubic_lattice_vectors(lattice_shape)
-    return crystal_bubbler(lattice_shape, lattice_vectors, link_tensors)
+    if scan:
+        return scanning_bubbler(lattice_shape, lattice_vectors, link_tensors)
+    else:
+        return alternating_bubbler(lattice_shape, lattice_vectors, link_tensors)
 
 ### checkerboard lattice
 
@@ -170,6 +144,9 @@ def checkerboard_network(lattice_shape, tensor_bundle, link_tensors = False):
     lattice_vectors = _checkerboard_lattice_vectors(lattice_shape)
     return crystal_network(lattice_shape, lattice_vectors, tensor_bundle, link_tensors)
 
-def checkerboard_bubbler(lattice_shape, link_tensors = False):
+def checkerboard_bubbler(lattice_shape, link_tensors = False, scan = True):
     lattice_vectors = _checkerboard_lattice_vectors(lattice_shape)
-    return crystal_bubbler(lattice_shape, lattice_vectors, link_tensors)
+    if scan:
+        return scanning_bubbler(lattice_shape, lattice_vectors, link_tensors)
+    else:
+        return alternating_bubbler(lattice_shape, lattice_vectors, link_tensors)
