@@ -22,7 +22,7 @@
 
 %%% symbols, notations, etc.
 \usepackage{physics,braket,bm,amssymb} % physics and math
-\usepackage{mathtools} % for floor delimiter
+\usepackage{mathtools} % for floor delimiter and \prescript command
 
 \renewcommand{\t}{\text} % text in math mode
 \newcommand{\f}[2]{\dfrac{#1}{#2}} % shorthand for fractions
@@ -39,8 +39,78 @@
 \newcommand{\Z}{\mathbb{Z}}
 \newcommand{\diag}{\mathrm{diag}\,}
 
-\DeclarePairedDelimiter\floor{\lfloor}{\rfloor}
+
+\usepackage[inline]{enumitem}
+\setlist[enumerate,1]{label={(\roman*)}}
 \renewcommand*{\thefootnote}{\alph{footnote}}
+\DeclarePairedDelimiter\floor{\lfloor}{\rfloor}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% tensor network drawing tools
+%%% taken in part from arxiv.org/abs/1603.03039
+
+\usepackage{xcolor}
+\definecolor{tensorblue}{rgb}{0.8,0.8,1}
+\definecolor{tensorred}{rgb}{1,0.5,0.5}
+\definecolor{tensorpurp}{rgb}{1,0.5,1}
+\definecolor{tensorgreen}{rgb}{0.3,0.8,0.3}
+
+\usepackage{tikz}
+\newcommand{\diagram}[1]{
+  \begin{tikzpicture}
+    [scale=.5, every node/.style = {sloped,allow upside down},
+    baseline = {([yshift=+0ex]current bounding box.center)},
+    rounded corners=2pt]
+    #1
+  \end{tikzpicture}}
+
+\tikzset{tens/.style={fill=tensorblue}}
+\tikzset{prp/.style={fill=tensorgreen}}
+\tikzset{msr/.style={fill=tensorred}}
+\tikzset{tengray/.style={fill=black!20}}
+
+\usetikzlibrary{calc}
+\newcommand{\wire}[4][]{
+  \draw[#1] (#3,#2) -- (#4,#2)
+}
+\newcommand{\vwire}[4][]{
+  \draw[#1] (#2,#3) -- (#2,#4)
+}
+\newcommand{\rect}[6][tens]{
+  \draw[#1] (#4,#2) rectangle (#5,#3);
+  \draw ($ 0.5*(#4,#2) + 0.5*(#5,#3) $) node {$#6$}
+}
+\renewcommand{\dot}[2]{
+  \node at (#2,#1) [circle,fill,inner sep=1.5pt]{};
+}
+\renewcommand{\cross}[3][.25]{
+  \draw (#3,#2) circle (#1) node {};
+  \draw ($ (#3,#2) - (#1,0) $) -- ($ (#3,#2) + (#1,0) $) node{};
+  \draw ($ (#3,#2) - (0,#1) $) -- ($ (#3,#2) + (0,#1) $) node{};
+}
+\newcommand{\cnot}[3]{
+  \dot{#2}{#1};
+  \vwire{#1}{#2}{#3};
+  \cross{#3}{#1};
+}
+
+% measurement meter
+\newcommand{\meter}[5][tengray]{
+  \rect[#1]{#2}{#3}{#4}{#5}{};
+  \path[path picture={
+    \draw[black] ([shift={(.1,.1)}]
+    path picture bounding box.south west) to[bend left=50]
+    ([shift={(-.1,.1)}]
+    path picture bounding box.south east);
+    \draw[black,-latex] ([shift={(0,.1)}]
+    path picture bounding box.south)
+    -- ([shift={(.2,-.1)}]path picture bounding box.north);}]
+  (#4,#2) rectangle (#5,#3);
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 \begin{document}
@@ -94,229 +164,268 @@ tensor network and qubit degrees of freedom associated with these
 dangling edges.
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{The general cut-and-stitch prescription}
 \label{sec:networks}
 
-The cutting scheme in ref.~[\citenum{peng2019simulating}] is based on
-a simple identity for linear operators $\rho$ on the Hilbert space of
-a collection of qubits:
+For any quantum state $\ket\psi$ of $N$ qubits, a straightforward
+resolution of the identity operator $I=\sum_{b\in\set{0,1}}\op{b}$ on
+qubit $n$ implies that
 \begin{align}
-  \rho \simeq \f12 \sum_{M\in\B} \tr_j\p{\rho M_j}\otimes M,
+  \ket\psi = I_n \ket\psi
+  \simeq \sum_{b\in\set{0,1}}
+  \ket{b} \otimes \prescript{}{n}{\bk{b|\psi}},
+  \label{eq:pure_identity}
+\end{align}
+where $\simeq$ denotes equality up to a permutation of tensor factors
+(i.e.~qubit order).  Here $\prescript{}{j}{\bk{b|\psi}}$ is a
+sub-normalized state of $N-1$ qubits acquired by projecting $\ket\psi$
+onto state $\ket{b}$ of qubit $n$.  If the structure of a quantum
+circuit that prepares a state $\ket\psi$ allows, the identity in
+\eqref{eq:pure_identity} can be used to ``cut'' a circuit by inserting
+a resolution of the identity operator $I$ at a location that splits
+the circuit into two disjoint sub-circuits, or {\it fragments}.  The
+state at the end of the circuit can then be decomposed as
+\begin{align}
+  \ket\psi \simeq \sum_{b\in\set{0,1}}
+  \ket{\psi_1\p{b}} \otimes \ket{\psi_2\p{b}},
+\end{align}
+where $\ket{\psi_1\p{b}}$ and $\ket{\psi_2\p{b}}$ are (possibly
+sub-normalized) states prepared by each circuit fragment when
+projecting onto $\ket{b}$ or preparing $\ket{b}$ on the appropriate
+wire of the circuit fragments.  A circuit that prepares the
+three-qubit GHZ state, for example, can be cut as
+\begin{align}
+  \diagram{
+    \wire{0}{-.5}{3.75};
+    \wire{1.5}{-.5}{3.75};
+    \wire{-1.5}{-.5}{3.75};
+    \rect{1}{2}{0}{1}{H};
+    \cnot{1.75}{1.5}{0};
+    \cnot{2.75}{0}{-1.5};
+  }
+  ~ = \sum_{b\in\set{0,1}} ~
+  \diagram{
+    \wire{0}{-.5}{2.5};
+    \wire{0}{5}{6.5};
+    \wire{1.5}{-.5}{6.5};
+    \wire{-1.5}{-.5}{6.5};
+    \rect{1}{2}{0}{1}{H};
+    \cnot{1.75}{1.5}{0};
+    \rect[msr]{-.5}{.5}{2.5}{3.5}{b};
+    \rect[prp]{-.5}{.5}{4}{5}{b};
+    \cnot{5.5}{0}{-1.5};
+  }
+  ~ \simeq \sum_{b\in\set{0,1}} ~
+  \diagram{
+    \wire{0}{-.5}{3};
+    \wire{1.5}{-.5}{3};
+    \rect{1}{2}{0}{1}{H};
+    \cnot{1.75}{1.5}{0};
+    \rect[msr]{-.5}{.5}{2.5}{3.5}{b};
+  }
+  ~ \otimes ~
+  \diagram{
+    \wire{0}{-1}{1.5};
+    \wire{1.5}{-.5}{1.5};
+    \rect[prp]{1}{2}{-1.5}{-.5}{b};
+    \cnot{0.5}{1.5}{0};
+  }.
+  \label{eq:cut_example}
+\end{align}
+In practice, however, a quantum computation does not yield the full
+state $\ket\psi$, but rather measurement statistics from sampling the
+diagonal elements of the density operator $\rho=\op\psi$ in some fixed
+computational basis.  The identity analogous to
+\eqref{eq:pure_identity} for density operators $\rho$ reads
+\begin{align}
+  \rho \simeq \f12 \sum_{M\in\B} M \otimes \tr_n\p{M_n\rho},
   \label{eq:core_identity}
 \end{align}
-where $\simeq$ denotes equality up to a permutation of tensor factors;
-$\B\equiv\set{I,X,Y,Z}$ is the set of singe-qubit identity and Pauli
-operators; $\tr_j$ denotes the partial trace with respect to qubit
-$j$; and $M_j$ denotes an operator which acts with $M$ on qubit $j$
-and trivially (i.e.~with the identity $I$) on all other qubits.  The
-identity in \eqref{eq:core_identity} follows trivially from the fact
-that $\B/\sqrt2$ forms an orthonormal basis for the vector space of
-single-qubit operators equipped with the trace inner product
-$\bk{A,B}\equiv\tr\p{A^\dag B}$.  This identity is a direct analogue
-(e.g.~for density operators) of the pure-state identity
+where $\B\equiv\set{X,Y,Z,I}$ is the set of Pauli operators together
+with the singe-qubit identity $I$; $\tr_j$ denotes the partial trace
+with respect to qubit $n$; and $M_n$ denotes an operator which acts
+with $M$ on qubit $n$ and trivially (i.e.~with the identity $I$) on
+all other qubits.  If the structure of a circuit allows it to be cut
+at one location into two fragments, The identity in
+\eqref{eq:core_identity} implies that the density operator sampled
+when measuring the circuit can be decomposed as
 \begin{align}
-  \ket\psi = I_j\ket\psi=\sum_{b\in\set{0,1}} \op{b}_j \ket\psi.
-\end{align}
-
-When a circuit is represented by a tensor network, the identity in
-\eqref{eq:core_identity} can (if the network structure allows) be used
-to ``cut'' the network into two disjoint sub-networks.  Just as the
-entire tensor network defines an operator $\rho$ on the Hilbert space
-of its dangling edges (e.g.~a density operator on the output qubits of
-a circuit), these sub-networks define operators on the Hilbert space
-of their respective dangling edges.  Written in terms of the operators
-defined by these sub-networks, the identity in
-\eqref{eq:core_identity} becomes
-\begin{align}
-  \rho \simeq \f12 \sum_{M\in\B} \rho_1\p{M} \otimes \rho_2\p{M},
+  \rho \simeq \f12 \sum_{M\in\B} \rho_1\p{M} \otimes \rho_2\p{M}.
   \label{eq:cut_identity}
 \end{align}
-where $\rho_n\p{M}$ is the operator defined by sub-network $n$ when
-attaching the operator $M$ at the location of the cut.  Note that if
-$\rho_n\p{M}$ is an $Q_n$-qubit operator, then $\rho_n$ is a linear
+If $\rho_f\p{M}$ is a $Q_f$-qubit operator, then $\rho_f$ is a linear
 map from the space of single-qubit operators to the space of
-$Q_n$-qubit operators.  The map $\rho_n$ is naturally represented by a
-tensor network with $Q_n+1$ dangling edges, which maps single-qubit
-operators on the dangling {\it cut edge} $c_n$ of $\rho_n$ to
-$Q_n$-qubit operators on the dangling {\it non-cut edges}
-$\bar{\v c}_n$ of $\rho_n$.  The operator $\rho_n\p{M}$ is recovered
-from $\rho_n$ by contracting the dangling edge $c_n$ with the vector
-$M$.
+$Q_f$-qubit operators.  The map $\rho_f$ naturally admits a
+representation as a tensor network with $Q_f+1$ dangling edges, which
+maps single-qubit operators on the dangling {\it cut edge} $e_f$ of
+$\rho_f$ to $Q_f$-qubit operators on the dangling {\it non-cut edges}
+$\bar{\v c}_f$ of $\rho_f$.  The operator $\rho_f\p{M}$ is recovered
+from $\rho_f$ by contracting the cut edge $e_f$ with a vector
+representation of the operator $M$.
 
-More generally, we can make $C$ cuts that split a tensor network
-$\rho$ into $N$ sub-networks $\set{\rho_n}$.  In order to stitch all
-sub-networks together, we will now need to sum over a list of
-operators $\v M\equiv\p{M_1,M_2,\cdots,M_C}\in\B^C$, where the
-operator $M_k$ is ``assigned'' to stitch (or cut) $k$.  Denoting the
-set of all stitches incident to sub-network $\rho_n$ by $\v s_n$, we
-define $\floor{\v M}_n\equiv\p{M_s:s\in\v s_n}$ to be the restriction
-of $\v M$ to the stitches in $\v s_n$; that is, $\floor{\v M}_n$ is a
-list of the operators in $\v M$ that are associated with stitches
-incident to $\rho_n$.  We can then expand the operator $\rho$ defined
-by the entire network as
+More generally, we can make $C$ cuts to split a circuit into $F$
+fragments $\set{\rho_f}$.  In order to stitch all fragments together,
+we will now need to sum over a list of operators
+$\v M\equiv\p{M_1,M_2,\cdots,M_C}\in\B^C$, where the operator $M_k$ is
+``assigned'' to stitch (or cut) $k$.  Denoting the set of all stitches
+incident to fragment $\rho_f$ by $\v s_f$, we define
+$\v M_f\equiv\p{M_s:s\in\v s_f}$ to be the restriction of $\v M$ to
+the stitches in $\v s_f$; that is, $\v M_f$ is a list of the operators
+in $\v M$ that are associated with stitches incident to fragment
+$\rho_f$.  We can then expand the full operator $\rho$ as
 \begin{align}
   \rho \simeq \f1{2^C} \sum_{\v M\in\B^C}
-  \bigotimes_{n\in\Z_N} \rho_n\p{\floor{\v M}_n},
+  \bigotimes_{f\in\Z_F} \rho_f\p{\v M_f}.
   \label{eq:general_identity}
 \end{align}
-where $\rho_n\p{\floor{\v M}_n}$ is acquired by contracting the cut
-edges $\v c_n$ of sub-network $\rho_n$ with the vectors in
-$\floor{\v M}_n$.  Although we will keep \eqref{eq:general_identity}
-in mind as the general prescription for reconstructing a circuit
-$\rho$ from its fragments $\set{\rho_n}$, for simplicity we will
-generally consider the single-cut case in \eqref{eq:cut_identity}
-throughout this work.
+Although we will keep \eqref{eq:general_identity} in mind as the
+general prescription for reconstructing a circuit from multiple
+fragments, for simplicity we will generally consider the single-cut
+case in \eqref{eq:cut_identity} throughout this work.
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Application to quantum circuits and runtime improvements}
 \label{sec:circuits}
 
-The expansions in \eqref{eq:cut_identity} and
-\eqref{eq:general_identity} provides a prescription to cut and stitch
-tensor networks, but what about quantum circuits?  What does it mean
-to attach some operator (e.g.~$M\in\B$) to a circuit?  We will first
-consider the attachment of a single-qubit density operator $\sigma$
-rather than an arbitrary single-qubit operator $M$.  Once we
-understand how to attach single-qubit density operators to circuits,
-we can use the fact that these operators span the entire space of
-single-qubit operators to build any operator we wish.
-
-Cutting a circuit $\rho$ into two fragments $\rho_1$ and $\rho_2$
-leaves a dangling ``output'' cut edge $c_1$ on fragment $\rho_1$ and a
-dangling ``input'' cut edge $c_2$ on fragment $\rho_2$.  Attaching a
-density operator $\sigma$ to the new dangling input edge $c_2$ of
-fragment $\rho_2$ has a straightforward interpretation: we simply
-prepare the state $\sigma$ at edge $c_2$.  In this way, the operator
-$\rho_2$ can be viewed as a {\it conditional state}, where the
-``condition'' $\sigma$ (i.e.~preparing the state $\sigma$ at edge
-$c_2$) induces the state $\rho_2\p{\sigma}$ on the remaining dangling
-edges (qubits) $\bar{\v c}_2$ of $\rho_2$.\footnote{The preparation of
-  a state $\sigma$ at edge $c_2$ is essentially the ``new method'' in
-  ref.~[\citenum{peng2019simulating}] for preparing
-  $\rho_2\p{\sigma}$.  The ``old method'' for preparing
-  $\rho_2\p{\sigma}$ was to initialize a pair of qubits in the
-  maximally entangled state $\p{\ket{00}+\ket{11}}/\sqrt2$, insert one
-  of these qubits at $c_2$, and then post-select all results on
-  measurement of the second qubit in a desired pure state $\sigma$.
-  Such post-selection projects onto an initial product state
-  $\sigma\otimes\sigma$ of the maximally entangled qubits, and is
-  therefore equivalent to simply preparing the first qubit in $\sigma$
-  and forgetting about the second qubit entirely, as in the ``new
-  method''.}
-
-In a similar manner, $\rho_1$ is a conditional operator for which the
-condition $\sigma$ corresponds to {\it finding} the qubit at the
-``output'' cut edge $c_1$ of $\rho_1$ in the state $\sigma$.  Unlike
-with the ``input'' case of $\rho_2\p{\sigma}$, however,
-$\rho_1\p{\sigma}$ is only {\it proportional} to a state prepared on
-the remaining edges $\bar{\v c}_1$ of circuit $\rho_1$ under condition
-$\sigma$; the proportionality factor $\tr\rho_1\p{\sigma}$ is equal to
-the probability of finding the qubit at edge $c_1$ in the state
-$\sigma$.  More specifically, with slight abuse of notation we can say
-that $\rho_1\p{\sigma}=\tr_{c_1}\p{\rho_1\sigma_{c_1}}$.  If $\rho_1$
-is a pure state, for example, then we can expand $\rho_1 = \op\psi$
-with
-$\ket\psi = \sum_{b\in\set{0,1}} \psi_b \ket{\psi_b}_{\bar{\v c}_1}
-\otimes \ket{b}_{c_1}$, where each $\ket{\psi_b}_{\bar{\v c}_1}$ is
-some pure state on the non-cut-edges $\bar{\v c}_1$ of circuit
-$\rho_1$.  The conditional operator $\rho_1\p{\sigma}$ for
-e.g.~$\sigma=\op{0}$ is then
-$\rho_1\p{\op{0}}=\abs{\psi_0}^2\op{\psi_0}_{\bar{\v c}_1}$.
-
-We ultimately wish to sample the probability distribution
-$p\equiv\diag\rho$ defined by the large quantum circuit $\rho$ in some
-fixed computational basis. To do so, we first define the {\it
-  conditional distributions} $p_n$ with
-$p_n\p{M}\equiv\diag\rho_n\p{M}$.  We then observe that for any
-density operator $\sigma$, the distribution $p_n\p{\sigma}$ is
-straightforward to determine by simulating the fragment $\rho_n$.  As
-$\rho_2\p{\sigma}$ is an ordinary quantum state on edges (qubits)
-$\bar{\v c}_2$ of fragment $\rho_2$, the distribution
-$p_2\p{\sigma}=\diag\rho_2\p{\sigma}$ is simply a probability
-distribution over measurement outcomes on the qubits at
-$\bar{\v c}_2$.  The distribution
-$p_1\p{\sigma}=\diag\rho_1\p{\sigma}$ is similarly the probability
-distribution over measurement outcomes on the non-cut-edges
-$\bar{\v c}_1$ of fragment $\rho_1$ multiplied by the probability of
-finding the qubit at edge $c_1$ in the state $\sigma$.  Once we know
-the distributions $p_n\p{\sigma}$ for any state $\sigma$, we can build
-any other distribution $p_n\p{M}$ by linearity of the conditionals
-$p_n$ and a decomposition of $M$ into a linear combination of density
-operators, e.g.~$p_n\p{Z}=p_n\p{\op{1}}-p_n\p{\op{0}}$.  In this way,
-we reconstruct the probability distribution $p$ from conditionals
-$p_n$ by restriction of \eqref{eq:cut_identity} to diagonal entries:
+The expansion in \eqref{eq:cut_identity} provides a prescription to
+cut and stitch {\it tensor networks}, but what about quantum circuits?
+What does it mean to attach some operator $M\in\B$ to a circuit?  The
+interpretation of such attachment is clarified by expanding Pauli
+operators $B\in\set{X,Y,Z}$ in their diagonal basis as
+$B=\sum_s s B_s$, where $B_s\equiv\op{B_s}$ is a density operator
+corresponding to the pure state $\ket{B_s}$ satisfying
+$B\ket{B_s}=s\ket{B_s}$, namely
 \begin{align}
-  p \simeq \f12 \sum_{M\in\B} p_1\p{M} \otimes p_2\p{M}.
-  \label{eq:cut_identity_probs}
+  \ket{Z_+} = \ket0, && \ket{Z_-} = \ket1, &&
+  \ket{X_\pm} = \f{\ket0 \pm \ket1}{\sqrt2}, &&
+  \ket{Y_\pm} = \f{\ket0 \pm i\ket1}{\sqrt2}.
 \end{align}
-At this point, for reasons that escape me the authors of
-ref.~[\citenum{peng2019simulating}] decided to explicitly expand
-$p_2\p{M}$ in a diagonal basis of $M$ while leaving $p_1\p{M}$ intact,
-decomposing the overall probability distribution into eight terms as
+Substituting these expansions into \eqref{eq:cut_identity} yields
+\begin{align}
+  \rho \simeq \f12 \sum_{\substack{B\in\set{X,Y,Z}\\r,s\in\set{\pm1}}}
+  rs\, \rho_1\p{B_r} \otimes \rho_2\p{B_s}
+  + \f12 \sum_{r,s\in\set{\pm1}} \rho_1\p{Z_r} \otimes \rho_2\p{Z_s},
+  \label{eq:cut_identity_XYZ}
+\end{align}
+where we can now interpret the attachments of states $B_s$ similarly
+to the attachments to circuits in \eqref{eq:cut_example}: either a
+preparation of a qubit in the state $B_s$, or a post-selection on
+finding a qubit in the state $B_s$, as appropriate.  Rather than
+thinking about the operators $\rho$ and $\rho_f$, it will be helpful
+to think about their diagonal elements $p\equiv\diag\rho$ and
+$p_f\equiv\diag\rho_f$ in a fixed computational basis.
+
+The distributions $p_f$ can be interpreted as {\it conditional}
+\mbox{(quasi-)probability} distributions.  The ``input'' condition
+$B_s$ defines a probability distribution $p_2\p{B_s}$ sampled by
+\begin{enumerate*}
+\item preparing the qubit $e_2$ at the cut edge of $\rho_2$ in the
+  state $B_s$,
+\item running the circuit defined by $\rho_2$, and
+\item measuring all qubits in the computational basis\footnote{The
+    preparation of a state $B_s$ on qubit $e_2$ is essentially the
+    ``new method'' in ref.~[\citenum{peng2019simulating}] for
+    preparing $\rho_2\p{B_s}$.  The ``old method'' for preparing
+    $\rho_2\p{B_s}$ was to initialize a pair of qubits in the
+    maximally entangled state $\p{\ket{00}+\ket{11}}/\sqrt2$, insert
+    one of these qubits in place of $e_2$, and then post-select all
+    results on measurement of the second qubit in the state $B_s$.
+    Such post-selection projects onto an initial product state
+    $B_s\otimes B_s$ of the maximally entangled qubits, and is
+    therefore equivalent to simply preparing the first qubit in $B_s$
+    and forgetting about the second qubit entirely, as in the ``new
+    method''.}.
+\end{enumerate*}
+The ``output'' condition $B_r$ defines a distribution $p_1\p{B_r}$
+acquired by
+\begin{enumerate*}
+\item running the circuit defined by $\rho_1$,
+\item collecting the joint probability distribution
+  $\tilde p_1\p{B_r}$ sampled by measuring qubit $e_1$ in the diagonal
+  basis of $B$ and all other qubits in the computational basis, and
+\item taking a ``slice'' of the joint probability distribution
+  $\tilde p_1\p{B_r}$ at a fixed measurement outcome $B_r$ on qubit
+  $e_1$.
+\end{enumerate*}
+Note that additionally normalizing the distribution $p_1\p{B_r}$ by
+$\tr p_1\p{B_r}$, which is equal to the probability of finding qubit
+$e_1$ in the state $B_r$, would yield a conditional probability
+distribution; we need to keep $p_1\p{B_r}$ sub-normalized for the
+reconstruction of $p$ from $p_1$ and $p_2$.
+
+In order to express \eqref{eq:cut_identity_XYZ} and interpret the
+conditional operators $\rho_f$, we expanded every instance of
+$\rho_f\p{M}$ in \eqref{eq:cut_identity} in the diagonal basis of $M$.
+For reasons that escape me, the authors of
+ref.~[\citenum{peng2019simulating}] decided to expand $\rho_2\p{M}$ in
+the diagonal basis of $M$ while leaving $\rho_1\p{M}$ intact, yielding
+the reconstruction formula
 \begin{align}
   p \simeq \f12 \sum_{\substack{B\in\set{X,Y,Z}\\s\in\set{\pm1}}}
   s\, p_1\p{B} \otimes p_2\p{B_s}
   + \f12\sum_{s\in\set{\pm1}} p_1\p{I} \otimes p_2\p{Z_s},
   \label{eq:cut_identity_probs_bad}
 \end{align}
-where $B_s\equiv\op{B_s}$ is the density operator corresponding to the
-pure state $\ket{B_s}$ that is the eigenvector of a Pauli operator
-$B\in\set{X,Y,Z}$ with eigenvalue $s$, i.e.
+where the distributions $p_1\p{M}$ are acquired by computing
+e.g.~$p_1\p{B_+}$ and $p_1\p{B_-}$, then taking a linear combination
+to get $p_1\p{B}=p_1\p{B_+}-p_1\p{B_-}$.  In practice, the slowest
+step in reconstructing the probability distribution $p$ from fragment
+distributions $p_1$ and $p_2$ is the evaluation of tensor products
+such as $p_1\p{B} \otimes p_2\p{B_s}$.  Rather than expanding
+$p_2\p{M}$ in the diagonal basis of $M$, it is therefore always
+favorable to compute $p_2\p{M}$ via classical pre-processing similarly
+to $p_1\p{M}$, and combining these distributions according to
 \begin{align}
-  \ket{Z_+} = \ket0, && \ket{Z_-} = \ket1, &&
-  \ket{X_\pm} = \f{\ket0 \pm \ket1}{\sqrt2}, &&
-  \ket{Y_\pm} = \f{\ket0 \pm i\ket1}{\sqrt2}.
+  p \simeq \f12 \sum_{M\in\B} p_1\p{M} \otimes p_2\p{M}.
+  \label{eq:cut_identity_probs}
 \end{align}
-In practice, if the distributions $p_n\p{M}$ have a large memory
-footprint, then the bottleneck (time-wise) for reconstructing $p$ is
-the computation tensor products such as $p_1\p{M} \otimes p_2\p{M}$.
-In this case, it is therefore much faster to first compute the
-distributions $p_n\p{M}$ for all $M\in\B$, and then combine these
-distributions according to \eqref{eq:cut_identity_probs}.  When
-reconstructing the probability distribution of a circuit with $C$
-cuts, using \eqref{eq:cut_identity_probs} in place of
+For a circuit with $C$ cuts, combining fragment distributions
+according to \eqref{eq:cut_identity_probs} rather than
 \eqref{eq:cut_identity_probs_bad} reduces the number of tensor
-products that one must compute from $8^C$ to $4^C$, which speeds up
+products that must be evaluated from $8^C$ to $4^C$, which speeds up
 reconstruction time by a factor of $\O\p{2^C}$.
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Informational completeness and memory improvements}
 \label{sec:completeness}
 
-Using a circuit fragment $\rho_n$ with a single cut edge $e_n$ for
+Using a circuit fragment $\rho_f$ with a single cut edge $e_n$ for
 reconstruction according to \eqref{eq:cut_identity_probs} requires
-characterizing the conditional distribution $p_n$ for several states
-(conditions) $\sigma$.  Once we know $p_n\p{Z_+}$ and $p_n\p{Z_-}$,
-for example, we can compute both $p_n\p{Z}=p_n\p{Z_+}-p_n\p{Z_-}$ and
-$p_n\p{I}=p_n\p{Z_+}+p_n\p{Z_-}$.  How many states $\sigma$ do we need
-to choose, or equivalently how many distributions $p_n\p{\sigma}$ do
-we need to compute, in order to determine all distribution $p_n\p{M}$
+characterizing the conditional distribution $p_f$ for several states
+(conditions) $\sigma$.  Once we know $p_f\p{Z_+}$ and $p_f\p{Z_-}$,
+for example, we can compute both $p_f\p{Z}=p_f\p{Z_+}-p_f\p{Z_-}$ and
+$p_f\p{I}=p_f\p{Z_+}+p_f\p{Z_-}$.  How many states $\sigma$ do we need
+to choose, or equivalently how many distributions $p_f\p{\sigma}$ do
+we need to compute, in order to determine all distribution $p_f\p{M}$
 that we need for reconstruction?  The recombination prescription in
 \eqref{eq:cut_identity_probs_bad} uses six states: $B_s$ for each of
-$s\in\set{\pm1}$ and $B\in\set{X,Y,Z}$.  If a fragment $\rho_n$ has
-$s_n$ incident stitches, therefore, at face value recombination
+$s\in\set{\pm1}$ and $B\in\set{X,Y,Z}$.  If a fragment $\rho_f$ has
+$s_f$ incident stitches, therefore, at face value recombination
 prescription in \eqref{eq:cut_identity_probs_bad} requires
-characterizing $6^{s_n}$ real-valued distributions associated with
-fragment $\rho_n$.  In a general sense, the reason that the six states
+characterizing $6^{s_f}$ distributions associated with fragment
+$\rho_f$.  In a general sense, the reason that the six states
 $\set{B_s}$ are sufficient to characterize any conditional is that
 they form a complete basis for the space of single-qubit operators; in
 fact, these states form an {\it over}-complete basis, as only four of
 them are linearly independent.  We therefore do not need to keep track
-of distributions $p_n\p{\sigma}$ for all six states in $\set{B_s}$, as
+of distributions $p_f\p{\sigma}$ for all six states in $\set{B_s}$, as
 we can use the fact that $I=B_++B_-$ for any $B\in\set{X,Y,Z}$ to
 recover, for example,
 \begin{align}
-  p_n\p{X_-}
-  = p_n\p{I} - p_n\p{X_+}
-  = p_n\p{Z_+} + p_n\p{Z_-} - p_n\p{X_+}.
+  p_f\p{X_-}
+  = p_f\p{I} - p_f\p{X_+}
+  = p_f\p{Z_+} + p_f\p{Z_-} - p_f\p{X_+}.
   \label{eq:X-_expansion}
 \end{align}
-We thus only need to characterize a conditional $p_n$ with an {\it
+We thus only need to characterize a conditional $p_f$ with an {\it
   informationally complete} set of conditions $\sigma$ that
 collectively span the space of single-qubit operators; this space is
 four-dimensional, which means that we should only need to characterize
-$4^{s_n}$ real-valued distributions for a fragment $\rho_n$ with $s_n$
-incident stitches.
+$4^{s_f}$ distributions for a fragment $\rho_f$ with $s_f$ incident
+stitches.
 
 In the case of ``input'' conditions, as for the conditional $p_2$ in
 \eqref{eq:cut_identity_probs}, the expansion in
@@ -325,7 +434,7 @@ each state $\sigma \in \set{X_+,Y_+,Z_+,Z_-}$, and store the
 corresponding distributions $p_2\p{\sigma}$.  This choice of basis for
 single-qubit operators, however, is ``biased'' along the $z$-axis,
 which loosely speaking introduces unevenly distributed error in any
-empirical characterization of the conditional $p_n$.  An unbiased
+empirical characterization of the conditional $p_f$.  An unbiased
 basis of states is provided by any {\it symmetric, informationally
   complete, positive operator-valued measure} (SIC-POVM), which for a
 qubit consists of the states on the four corners of a regular
@@ -339,15 +448,15 @@ vectors $\uv v_j$ proportional to
   \v v_4 \equiv \p{ -1, -1, +1 },
 \end{align}
 which define states $S_j\equiv\p{I+\uv v_j\c\v X}/2$ with
-$\v X\equiv\p{X,Y,Z}$.  Knowing the distribution $p_n\p{\sigma}$ for
-all states $\sigma\in\set{S_j}$ allows us to compute $p_n\p{M}$ for
+$\v X\equiv\p{X,Y,Z}$.  Knowing the distribution $p_f\p{\sigma}$ for
+all states $\sigma\in\set{S_j}$ allows us to compute $p_f\p{M}$ for
 any single-qubit operator $M=M_0I+\v M\c\v X$ via the expansion
 \begin{align}
   M = \f12 \sum_j \p{ M_0 + 3 \v M\c\uv v_j } S_j
   &&
   \implies
   &&
-  p_n\p{M} = \f12 \sum_j \p{ M_0 + 3 \v M\c\uv v_j } p_n\p{S_j}.
+  p_f\p{M} = \f12 \sum_j \p{ M_0 + 3 \v M\c\uv v_j } p_f\p{S_j}.
   \label{eq:SIC_expansion}
 \end{align}
 
@@ -356,13 +465,13 @@ In the case of ``output'' conditions, as for the conditional $p_1$ in
 measurement directly.  While there has been some
 theoretical\cite{tabia2012experimental} and
 experimental\cite{bent2015experimental, bian2015realization} progress
-in implementing direct SIC-POVM measurements, however, for now we are
-limited to making projective measurements of qubits in some basis of
-two orthogonal states.  Making projective measurements of SIC-POVM
-basis elements would therefore require measuring the qubit at edge
-$e_1$ of fragment $\rho_1$ in four different bases, which can yield
-one of eight different outcomes.  Four of these outcomes prepare a
-SIC-POVM state $S_j$, which in turn prepares the state (proportional
+in implementing direct SIC-POVM measurements, for now we are limited
+to making projective measurements of qubits in some basis of two
+mutually orthogonal states.  Making projective measurements of
+SIC-POVM basis elements would therefore require measuring the qubit at
+edge $e_1$ of fragment $\rho_1$ in four different bases, which can
+yield one of eight different outcomes.  Four of these outcomes prepare
+a SIC-POVM state $S_j$, which in turn prepares the state (proportional
 to) $\rho_1\p{S_j}$ at the non-cut edges $\bar{\v e}_1$ of fragment
 $\rho_1$; measuring the qubits at $\bar{\v e}_1$ then samples the
 distribution $p_1\p{S_j}$.  The problem with this measurement
@@ -387,20 +496,20 @@ and then (ii) {\it always} collect data on the distribution $p_1\p{I}$
   &&
   \implies
   &&
-  p_n\p{I} = \f13 \sum_{\substack{B\in\set{X,Y,Z}\\s\in\set{\pm1}}}
-  p_n\p{B_s}.
+  p_f\p{I} = \f13 \sum_{\substack{B\in\set{X,Y,Z}\\s\in\set{\pm1}}}
+  p_f\p{B_s}.
 \end{align}
 This measurement scheme is economical in the sense that it (i) stores
 four probability distributions per ``output'' condition (i.e.~the
-minimum number necessary for reconstruction), and (ii) makes use of
-all possible measurement outcomes.\footnote{Note that making
+minimum number necessary for full reconstruction), and (ii) makes use
+of all possible measurement outcomes.\footnote{Note that making
   projective measurements in only two different bases is insufficient
   to characterize the conditional distribution $p_1$.  Although
   measurements in two different bases yield four possible outcomes,
   these outcomes are not linearly independent, as can be seen from
-  \eqref{eq:X-_expansion}.}  Knowing the distribution $p_n\p{\sigma}$
+  \eqref{eq:X-_expansion}.}  Knowing the distribution $p_f\p{\sigma}$
 for all conditions $\sigma\in\set{I,X_+,Y_+,Z_+}$ allows us to compute
-$p_n\p{M}$ for any single-qubit operator $M = M_0 I + \v M\c\v X$ with
+$p_f\p{M}$ for any single-qubit operator $M = M_0 I + \v M\c\v X$ with
 $\v M\equiv\p{M_X,M_Y,M_Z}$ via the expansion
 \begin{align}
   M = 2 \v M\c\v X_+ + \p{ M_0 - \sum_{B\in\set{X,Y,Z}} M_B } I
@@ -409,38 +518,7 @@ where $\v X_+\equiv\p{X_+,Y_+,Z_+}$ and (for reference)
 $B_+=\p{I+B}/2$.
 
 
-\section{A quick aside: complex-valued (amplitude) conditionals}
-\label{sec:amplitudes}
-
-If we can simulate a fragment directly (i.e.~via ``statevector''
-simulations) on a classical computer and store complex amplitudes for
-all possible measurement outcomes, then instead
-\eqref{eq:core_identity} we can cut a circuit using the simple
-pure-state identity
-\begin{align}
-  \ket\psi = \sum_{b\in\set{0,1}} \op{b}_j \ket\psi,
-\end{align}
-where $j$ indexes the qubit at the cut edge of the circuit.  The
-analogue of \eqref{eq:cut_identity} for stitching together two
-fragments of a circuit with one cut becomes
-\begin{align}
-  \ket\psi \simeq
-  \sum_{b\in\set{0,1}} \ket{\psi_1\p{b}} \otimes \ket{\psi_2\p{b}}.
-\end{align}
-Although reconstruction now requires assigning one of two values
-$b\in\set{0,1}$ to each stitch, as opposed to one of four operators
-$M\in\B$, the memory footprint of each fragment $\psi_n$ is the same
-as before because the conditional distributions $\psi_n$ are now
-complex-valued (as opposed to real-valued).  Nonetheless, direct
-simulations of a fragment yield the distributions $\psi_n\p{b}$ for
-$b\in\set{0,1}$ directly; the conditionals $\rho_n$, in contrast, have
-to be characterized for all $M\in\B$ by post-processing simulation
-results.  When performing direct simulations of fragments, therefore,
-computing and recombining complex-valued conditionals $\psi_n$ rather
-than real-valued conditionals $\rho_n$ is faster due to reduced
-computational overhead.
-
-
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{The sampling problem}
 \label{sec:sampling}
 
