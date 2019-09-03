@@ -24,14 +24,17 @@ from functools import reduce
 # with s_j \in 2\pi/q \times \Z; note that the ising model is a 2-state potts model
 ##########################################################################################
 
-def _integers(spokes, center_on_zero = False):
-    if not center_on_zero:
+def _integers(spokes, offset = False, center_on_zero = False):
+    assert( not offset or not center_on_zero )
+    if not offset and not center_on_zero:
         return range(spokes)
-    else:
-        return ( val-(spokes-1)/2 for val in range(spokes) )
+    if offset:
+        return ( 1/2 + val for val in range(spokes) )
+    if center_on_zero:
+        return ( val - (spokes-1)/2 for val in range(spokes) )
 
-def _angles(spokes, center_on_zero = False):
-    return ( val * 2*np.pi/spokes for val in _integers(spokes, center_on_zero) )
+def _angles(spokes, offset = False, center_on_zero = False):
+    return ( val * 2*np.pi/spokes for val in _integers(spokes, offset, center_on_zero) )
 
 # vertex tensor in the "bare" tensor network of the clock model
 def bare_node_tensor(dimension, spokes, inv_temp, field):
@@ -49,9 +52,9 @@ def bare_link_tensor(spokes, inv_temp):
                          for theta in _angles(spokes) ]) / spokes
 
 # singular values of the link matrix
-def _diag_val(spokes, idx, inv_temp):
+def _diag_val(spokes, idx, inv_temp, offset = False):
     return sum( np.exp( inv_temp * np.cos(angle) ) * np.cos( idx * angle )
-                for angle in _angles(spokes) ) / spokes
+                for angle in _angles(spokes, offset = offset) ) / spokes
 
 # thermal edge state vectors
 def _therm_vec(spokes, angle, inv_temp):
@@ -77,7 +80,8 @@ def vertex_tensor_XY(dimension, bond_dimension, inv_temp, field):
     def _mod_diag_val(indices, xx):
         idx_sum = sum(indices[:dimension]) - sum(indices[dimension:])
         return scipy.special.iv(idx_sum, xx)
-    index_vals = set_product(_integers(bond_dimension,True), repeat = 2*dimension)
+    index_vals = set_product(_integers(bond_dimension, center_on_zero = True),
+                             repeat = 2*dimension)
     vector = tf.constant([ np.sqrt(_prod_diag_val(indices, inv_temp)) *
                            _mod_diag_val(indices, inv_temp*field)
                            for indices in index_vals ])
