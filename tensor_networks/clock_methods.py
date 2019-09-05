@@ -113,7 +113,7 @@ def checkerboard_tensor(dimension, spokes, inv_temp, field):
 
     all_angles = set_product(_angles(spokes), repeat = tensor_legs)
     vector = tf.constant([ _angles_coeff(angles) for angles in all_angles ])
-    return tf.reshape(vector, (spokes,)*tensor_legs)
+    return tf.reshape(vector, (spokes,)*tensor_legs) / spokes**(tensor_legs/2)
 
 # construct tensor network that evaluates the the partition function of the clock model
 def clock_network(lattice_shape, spokes, inv_temp, field = 0, network_type = "fused"):
