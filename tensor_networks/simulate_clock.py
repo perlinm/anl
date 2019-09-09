@@ -19,12 +19,15 @@ root_dir = os.path.dirname(sys.argv[0])
 
 spokes = int(sys.argv[1])
 lattice_size = int(sys.argv[2])
-network_type = sys.argv[3] # must be one of "bare", "fused", "XY", or "chkr"
+network_type = sys.argv[3]
+assert( network_type in [ "bare", "fused", "chkr", "XY" ] )
 
-max_inv_temp = 3
+max_inv_temp = 5
+
+inv_temp_steps = 100
+
+# define small value for numerical derivatives: small_value = \beta dh
 small_value = 1e-6
-
-inv_temp_steps = 50
 diff_field_steps = 2
 
 test_run = True
