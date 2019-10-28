@@ -178,7 +178,7 @@ qubit $n$ implies that
   \label{eq:pure_identity}
 \end{align}
 where $\simeq$ denotes equality up to a permutation of tensor factors
-(i.e.~qubit order).  Here $\prescript{}{j}{\bk{b|\psi}}$ is a
+(i.e.~qubit order).  Here $\prescript{}{n}{\bk{b|\psi}}$ is a
 sub-normalized state of $N-1$ qubits acquired by projecting $\ket\psi$
 onto state $\ket{b}$ of qubit $n$.  If the structure of a quantum
 circuit that prepares a state $\ket\psi$ allows, the identity in
@@ -190,7 +190,7 @@ state at the end of the circuit can then be decomposed as
   \ket\psi \simeq \sum_{b\in\set{0,1}}
   \ket{\psi_1\p{b}} \otimes \ket{\psi_2\p{b}},
 \end{align}
-where $\ket{\psi_1\p{b}}$ and $\ket{\psi_2\p{b}}$ are (possibly
+where $\ket{\psi_1\p{b}}$ and $\ket{\psi_2\p{b}}$ are (generally
 sub-normalized) states prepared by each circuit fragment when
 projecting onto $\ket{b}$ or preparing $\ket{b}$ on the appropriate
 wire of the circuit fragments.  A circuit that prepares the
@@ -243,7 +243,7 @@ computational basis.  The identity analogous to
   \label{eq:core_identity}
 \end{align}
 where $\B\equiv\set{X,Y,Z,I}$ is the set of Pauli operators together
-with the singe-qubit identity $I$; $\tr_j$ denotes the partial trace
+with the singe-qubit identity $I$; $\tr_n$ denotes the partial trace
 with respect to qubit $n$; and $M_n$ denotes an operator which acts
 with $M$ on qubit $n$ and trivially (i.e.~with the identity $I$) on
 all other qubits.  If the structure of a circuit allows it to be cut
@@ -530,8 +530,6 @@ $B_+=\p{I+B}/2$.
 \end{document}
 
 todo:
-
-put notes on Overleaf, share with Martin + Brad
 
 better/more motivation
 clarify implications
