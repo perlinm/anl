@@ -196,24 +196,26 @@
   \end{itemize}
 
   \vspace{-1em}
-  \uncover<2->{
-    \begin{align*}
-      & v_{\color<5->{blue} j}
-      &
-      & M_{\color<5->{blue} jk}
+
+  \begin{align*}
+    \begin{array}{c @{\qquad\qquad} c @{\qquad\qquad} c}
+      \uncover<2->{
+        v_{\color<5->{blue} j}
+        &
+        M_{\color<5->{blue} jk}
+      }
       &
       \uncover<3->{
-        & T_{\color<5->{blue} jk\ell m}
-      } \\
+        T_{\color<5->{blue} jk\ell m}
+      }  \\[1em]
       \uncover<4->{
-        &\diagram{
+        \diagram{
           \wire{0}{0}{1};
           \uncover<5->{
             \wire[blue,thick]{0}{0}{1};
           }
           \circ{0}{0}{v};
         }
-        &
         &\diagram{
           \wire{0}{-1}{1};
           \uncover<5->{
@@ -221,7 +223,6 @@
           }
           \circ{0}{0}{M};
         }
-        &
         &\diagram{
           \dwire{-.75}{+.75}{-.75}{.75};
           \dwire{+.75}{-.75}{-.75}{.75};
@@ -232,8 +233,8 @@
           \circ{0}{0}{T};
         }
       }
-    \end{align*}
-  }
+    \end{array}
+  \end{align*}
 \end{frame}
 
 \begin{frame}
@@ -593,7 +594,7 @@
     \begin{column}{0.75\textwidth}
       \begin{itemize} \setlength{\itemsep}{1.75em}
       \item Spins $\v s=\p{\cos\theta,\sin\theta}$
-      \item<2-> $q$ discrete angles $\theta=\t{integer}\times2\pi/q$
+      \item<2-> $q$ discrete angles $\theta=\t{[integer]}\times2\pi/q$
 
       \item<3-> Spin-aligning interactions
 
