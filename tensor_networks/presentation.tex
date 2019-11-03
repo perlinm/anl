@@ -41,19 +41,15 @@
 \newcommand{\U}{\mathbb{U}}
 \newcommand{\Z}{\mathbb{Z}}
 
+\newcommand{\D}{\mathcal{D}}
 \renewcommand{\H}{\mathcal{H}}
 \renewcommand{\O}{\mathcal{O}}
+\newcommand{\T}{\mathcal{T}}
 
 \usepackage{dsfont}
 \newcommand{\1}{\mathds{1}}
 
 \renewcommand*{\thefootnote}{\alph{footnote}}
-
-%%% diagonal dots
-\usepackage{rotating}
-\newcommand{\updots}{\text{\begin{rotate}{45}$\cdots$\end{rotate}}}
-\newcommand{\dndots}{\text{\begin{rotate}{-45}$\cdots$\end{rotate}}}
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% tensor network drawing tools
@@ -65,17 +61,21 @@
 \definecolor{tensorpurp}{rgb}{1,0.5,1}
 
 \usepackage{tikz}
-\newcommand{\diagram}[1]{
-  \begin{tikzpicture}
-    [scale=.5, every node/.style = {sloped,allow upside down},
+\newcommand{\diagram}[2][0.5]{
+  ~\begin{tikzpicture}
+    [scale=#1, every node/.style = {sloped,allow upside down},
     baseline = {([yshift=+0ex]current bounding box.center)},
     rounded corners=2pt]
-    #1
-  \end{tikzpicture}}
+    #2
+  \end{tikzpicture}~}
 
-\tikzset{tenblue/.style={fill=tensorblue}}
-\tikzset{tengray/.style={fill=black!20}}
-\tikzset{tenorange/.style={fill=orange!30}}
+\tikzset{tens/.style={fill=tensorblue}}
+\tikzset{diag/.style={fill=green!50!black!50}}
+\tikzset{isom/.style={fill=orange!30}}
+\tikzset{proj/.style={fill=tensorred}}
+
+\tikzset{tengrey/.style={fill=black!20}}
+\tikzset{tenpurp/.style={fill=tensorpurp}}
 
 \usetikzlibrary{calc}
 \newcommand{\wire}[4][]{
@@ -87,14 +87,15 @@
 \newcommand{\dwire}[5][]{
   \draw[#1] (#4,#2) -- (#5,#3)
 }
-\newcommand{\rect}[6][tenblue]{
+\newcommand{\rect}[6][tens]{
   \draw[#1] (#4,#2) rectangle (#5,#3);
   \draw ($ (#4,#2) !.5! (#5,#3) $) node {$#6$}
 }
-\renewcommand{\circ}[4][tenblue]{
+\renewcommand{\circ}[4][tens]{
   \draw[#1] (#3,#2) circle (0.5) node {$#4$};
 }
-\newcommand{\Circ}[5][tenblue]{
+
+\newcommand{\Circ}[5][tens]{
   \draw[#1] (#3,#2) circle (#4) node {$#5$};
 }
 
@@ -113,6 +114,11 @@
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% diagonal dots
+\usepackage{rotating}
+\newcommand{\updots}{\text{\begin{rotate}{45}$\cdots$\end{rotate}}}
+\newcommand{\dndots}{\text{\begin{rotate}{-45}$\cdots$\end{rotate}}}
 
 % for drawing arrows
 \usetikzlibrary{arrows,shapes}
@@ -137,19 +143,14 @@
 
 \author{Michael A. Perlin \\[.5em]
   Nouman T.~Butt, James C.~Osborn, Xiao-Yong Jin}%
-\date{19 August 2019}
+\date{07 November 2019}
 
 \begin{document}
 
 \begin{frame}[plain]
   \begin{center}
-    {\usebeamercolor[fg]{title} \LARGE
-      Diagnosing
-      {\only<4>{\color{red}}phase transitions}
-      by evaluating \\
-      {\only<2>{\color{red}}tensor networks} with a
-      {\only<3>{\color{red}}quantum computer}
-    }
+    {\usebeamercolor[fg]{title} \LARGE Quantum evaluation of tensor
+      networks in the $q$-state Potts model }
   \end{center}
   \vspace{2em}
   \begin{center}
@@ -294,12 +295,12 @@
             \newcommand{\lblD}{}
             \newcommand{\lblE}{}
             \newcommand{\lblF}{}
-            \newcommand{\clrA}{tenblue}
-            \newcommand{\clrB}{tenblue}
-            \newcommand{\clrC}{tenblue}
-            \newcommand{\clrD}{tenblue}
-            \newcommand{\clrE}{tenblue}
-            \newcommand{\clrF}{tenblue}
+            \newcommand{\clrA}{tens}
+            \newcommand{\clrB}{tens}
+            \newcommand{\clrC}{tens}
+            \newcommand{\clrD}{tens}
+            \newcommand{\clrE}{tens}
+            \newcommand{\clrF}{tens}
             \newcommand{\pthA}{}
             \newcommand{\pthB}{}
             \newcommand{\pthC}{}
@@ -315,23 +316,23 @@
               \renewcommand{\lblF}{6}
             }
             \only<9>{
-              \renewcommand{\clrB}{tengray}
+              \renewcommand{\clrB}{tengrey}
               \renewcommand{\pthB}{dotted}
             }
             \only<9-10>{
-              \renewcommand{\clrC}{tengray}
+              \renewcommand{\clrC}{tengrey}
               \renewcommand{\pthC}{dotted}
             }
             \only<9-11>{
-              \renewcommand{\clrD}{tengray}
+              \renewcommand{\clrD}{tengrey}
               \renewcommand{\pthD}{dotted}
             }
             \only<9-12>{
-              \renewcommand{\clrE}{tengray}
+              \renewcommand{\clrE}{tengrey}
               \renewcommand{\pthE}{dotted}
             }
             \only<9-13>{
-              \renewcommand{\clrF}{tengray}
+              \renewcommand{\clrF}{tengrey}
               \renewcommand{\pthF}{dotted}
             }
             %
@@ -462,10 +463,10 @@
             \circ{-2}{4}{};
             \circ{+0}{4}{};
             \circ{+2}{4}{};
-            \circ[tengray]{+3}{6}{};
-            \circ[tengray]{+1}{6}{};
-            \circ[tengray]{-1}{6}{};
-            \circ[tengray]{-3}{6}{};
+            \circ[tengrey]{+3}{6}{};
+            \circ[tengrey]{+1}{6}{};
+            \circ[tengrey]{-1}{6}{};
+            \circ[tengrey]{-3}{6}{};
           }
         \end{align*}
       }
@@ -480,7 +481,7 @@
 
 \begin{frame}
   \frametitle{Quantum computers}
-  \begin{itemize} \setlength{\itemsep}{1em}
+  \begin{itemize} \setlength{\itemsep}{1.5em}
   \item $N$ qubits $\to$ $2^N$-dimensional state space
     \begin{align*}
       \ket\psi = \sum_{j,k,\ell,\cdots}
@@ -503,7 +504,7 @@
         \wire{0}{-.5}{3.5};
         \wire{1.5}{-.5}{3.5};
         \wire{-1.5}{-.5}{3.5};
-        \rect[tengray]{1}{2}{0}{1}{H};
+        \rect[tengrey]{1}{2}{0}{1}{H};
         \cnot{1.75}{1.5}{0};
         \cnot{2.75}{0}{-1.5};
         \draw (-1,0) node {$\ket{0}$};
@@ -518,9 +519,9 @@
         \rect{-.5}{.5}{-1.5}{-.5}{0};
         \rect{1}{2}{-1.5}{-.5}{0};
         \rect{-2}{-1}{-1.5}{-.5}{0};
-        \rect[tenorange]{1}{2}{0}{1}{};
-        \rect[tenorange]{-.5}{2}{1.5}{2.5}{};
-        \rect[tenorange]{-2}{.5}{3}{4}{};
+        \rect[isom]{1}{2}{0}{1}{};
+        \rect[isom]{-.5}{2}{1.5}{2.5}{};
+        \rect[isom]{-2}{.5}{3}{4}{};
       }
       ~ = ~
       \diagram{
@@ -530,16 +531,193 @@
         \rect{-2}{2}{0}{2}{\psi_{\t{GHZ}}};
       }
     \end{align*}
-
-  \item<4-> Tricks for computing non-unitary tensor networks ~\hfill
-    \uncover<5->{({\color{red}!!!})}
   \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{``Unitarizing'' a tensor}
+  \begin{align*}
+    T = \sum_{j,k,\ell} T_{jk\ell} \op{jk}{\ell}
+    =
+    \diagram{
+      \wire{1.5}{1}{1.5};
+      \wire{.5}{1}{1.5};
+      \wire{1}{-.5}{0};
+      \rect{0}{2}{0}{1}{T};
+    }
+    \uncover<3->{
+      =
+      \diagram{
+        \wire{1.5}{-.5}{1.5};
+        \wire{.5}{-.5}{1.5};
+        \rect[proj]{1}{2}{-1.5}{-.5}{0};
+        \rect{0}{2}{0}{1}{\tilde T};
+      }
+    }
+    \uncover<4->{
+      =
+      \diagram{
+        \wire{1.5}{-.5}{4.5};
+        \wire{.5}{-.5}{4.5};
+        \rect[proj]{1}{2}{-1.5}{-.5}{0};
+        \rect[isom]{0}{2}{0}{1}{V};
+        \rect[diag]{0}{2}{1.5}{2.5}{D};
+        \rect[isom]{0}{2}{3}{4}{W};
+      }
+    }
+  \end{align*}
+  \vfill
+  \begin{itemize} \setlength{\itemsep}{2em}
+  \item<2-> Zero padding: $T \to \tilde T = T \otimes \bra{0}$
+    \vspace{.5em}
+    \begin{itemize}
+    \item<3-> Recovery:
+      $T\ket\psi = \tilde T\ket{\psi,0}$
+    \end{itemize}
+
+  \item<4-> Singular-value decomposition (SVD): $\tilde T = W D V$
+    \vspace{.5em}
+    \begin{itemize}
+    \item $V,W$ unitary, $D$ diagonal and non-negative
+    \end{itemize}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{``Unitarizing'' a tensor (continued)}
+  \begin{align*}
+    \diagram{
+      \wire{1.5}{-.5}{1.5};
+      \wire{.5}{-.5}{1.5};
+      \rect[diag]{0}{2}{0}{1}{D};
+    }
+    \uncover<3->{
+      =
+      \diagram{
+        \wire{2.5}{-.5}{1.5};
+        \wire{1.5}{-.5}{1.5};
+        \wire{.5}{-.5}{1.5};
+        \rect[proj]{2}{3}{-1.5}{-.5}{0};
+        \rect[proj]{2}{3}{1.5}{2.5}{0};
+        \rect[isom]{0}{3}{0}{1}{U};
+      }
+      \times \norm{D}
+    }
+  \end{align*}
+  \begin{itemize} \setlength{\itemsep}{1em}
+  \item<2-> Construct unitary a operator:
+    \begin{align*}
+      U = \f1{\norm{D}} \p{D\otimes Z+\sqrt{\1-D^2}\otimes X}
+    \end{align*}
+    \begin{itemize}
+    \item<3-> Recovery:
+      $\bk{\phi|D|\psi} = \bk{\phi,0|U|\psi,0} \times \norm{D}$
+    \end{itemize}
+
+    \item<4-> Altogether:\uncover<5->{{\color{red}*}}
+      \begin{align*}
+        \diagram{
+          \wire{1.5}{1}{1.5};
+          \wire{.5}{1}{1.5};
+          \wire{1}{-.5}{0};
+          \rect{0}{2}{0}{1}{T};
+        }
+        =
+        \diagram{
+          \wire{3.5}{-.5}{4.5};
+          \wire{2}{-.5}{4.5};
+          \wire{.5}{-.5}{4.5};
+          \rect[proj]{3}{4}{-1.5}{-.5}{0};
+          \rect[proj]{1.5}{2.5}{-1.5}{-.5}{0};
+          \rect[isom]{0}{3}{0}{1}{V};
+          \rect[isom]{0}{4}{1.5}{2.5}{U};
+          \rect[isom]{0}{3}{3}{4}{W};
+          \rect[proj]{3}{4}{4.5}{5.5}{0};
+        }
+        \times \norm{D}
+      \end{align*}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Tensor networks as quantum circuits}
+  \vspace{1em}
+  \makebox[\textwidth]{$
+    \diagram{
+      \dwire{0}{2}{0}{2};
+      \wire{2}{0}{2};
+      \wire{0}{0}{2};
+      \vwire{2}{0}{2};
+      \circ{2}{0}{T_1};
+      \circ{0}{0}{T_2};
+      \circ{2}{2}{T_3};
+      \circ{0}{2}{T_4};
+    }
+    =
+    \diagram{
+      \wire{-2.5}{-1}{14};
+      \wire{-1}{-1}{10};
+      \wire[dotted]{-1}{10}{12};
+      \wire{-1}{12}{14};
+      \wire{.5}{-1}{14};
+      \wire{2}{-1}{14};
+      \wire{3.5}{-1}{14};
+      \wire{5}{-1}{5.5};
+      \wire[dotted]{5}{5.5}{7.5};
+      \wire{5}{7.5}{14};
+      \wire{6.5}{-1}{14};
+      %
+      \rect[isom]{3}{4}{0}{1}{V_1};
+      \rect[isom]{3}{5.5}{1.5}{2.5}{U_1};
+      \rect[isom]{3}{4}{3}{4}{W_1};
+      \rect[isom]{0}{2.5}{0}{1}{V_2};
+      \rect[isom]{-1.5}{2.5}{1.5}{2.5}{U_2};
+      \rect[isom]{0}{2.5}{3}{4}{W_2};
+      \rect[isom]{1.5}{4}{4.5}{5.5}{V_3};
+      \rect[isom]{1.5}{7}{6}{7}{U_3};
+      \rect[isom]{1.5}{4}{7.5}{8.5}{W_3};
+      \rect[isom]{0}{2.5}{9}{10}{V_4};
+      \rect[isom]{-3}{2.5}{10.5}{11.5}{U_4};
+      \rect[isom]{0}{2.5}{12}{13}{W_4};
+      %
+      \rect[proj]{-3}{-2}{-1.5}{-.5}{0};
+      \rect[proj]{-1.5}{-.5}{-1.5}{-.5}{0};
+      \rect[proj]{0}{1}{-1.5}{-.5}{0};
+      \rect[proj]{1.5}{2.5}{-1.5}{-.5}{0};
+      \rect[proj]{3}{4}{-1.5}{-.5}{0};
+      \rect[proj]{4.5}{5.5}{-1.5}{-.5}{0};
+      \rect[proj]{6}{7}{-1.5}{-.5}{0};
+      %
+      \rect[proj]{-3}{-2}{13.5}{14.5}{0};
+      \rect[proj]{-1.5}{-.5}{13.5}{14.5}{0};
+      \rect[proj]{0}{1}{13.5}{14.5}{0};
+      \rect[proj]{1.5}{2.5}{13.5}{14.5}{0};
+      \rect[proj]{3}{4}{13.5}{14.5}{0};
+      \rect[proj]{4.5}{5.5}{13.5}{14.5}{0};
+      \rect[proj]{6}{7}{13.5}{14.5}{0};
+    } \times \displaystyle \prod_j \norm{D_j}
+    $}
+
+  \begin{align*}
+    \T = \bk{\v 0|C|\v 0} \times \D
+    \uncover<3->{= \sqrt{p} \times \D}
+    &&
+    \uncover<2->{p = \abs{\bk{\v 0|C|\v 0}}^2}
+  \end{align*}
+
+  \begin{itemize}
+  \item<4-> Arad and Landau, 2010, arXiv:0805.0040
+
+    {\small ``Quantum Computation and the Evaluation of Tensor
+      Networks''}
+  \end{itemize}
+
 \end{frame}
 
 \begin{frame}
   \frametitle{Partition function}
   \begin{align*}
-    Z = \sum_{\substack{\t{all physical}\\\t{states}}} e^{-E/T}
+    Z = \sum_{\substack{\t{all physical}\\\t{states}}} e^{-E_{\t{state}}/T}
   \end{align*}
 
   \vspace{.5em}
@@ -562,10 +740,10 @@
         \vwire{0}{-1}{2.5};
         \vwire{1.5}{-1}{2.5};
         %
-        \circ{0}{0}{T};
-        \circ{0}{1.5}{T};
-        \circ{1.5}{0}{T};
-        \circ{1.5}{1.5}{T};
+        \circ{0}{0}{m};
+        \circ{0}{1.5}{m};
+        \circ{1.5}{0}{m};
+        \circ{1.5}{1.5}{m};
         %
         \draw (-1.75,0) node {$\cdots$};
         \draw (-1.75,1.5) node {$\cdots$};
